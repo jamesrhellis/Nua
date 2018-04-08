@@ -52,9 +52,11 @@ typedef struct tab {
 	val_ht ht;
 } tab;
 
+typedef enum optype { OPT_N, OPT_RL, OPT_RRR, OPT_O } optype;
 typedef enum opcode  { OP_NOP,  OP_SETL, OP_END, OPCODE_NO} opcode;
 char *opcode_str[OPCODE_NO] =
                      {"NOP","SETL", "END"};
+optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N };
 
 typedef struct inst {
 	uint8_t op;
@@ -64,6 +66,12 @@ typedef struct inst {
 			uint16_t lit;
 		};
 		struct {
+			uint8_t rout;
+			uint8_t rina;
+			uint8_t rinb;
+		};
+		struct {
+			int off : 24;
 		};
 	};
 } inst;
@@ -79,6 +87,27 @@ typedef struct func_def {
 } func_def;
 
 #include "parse.c"
+
+int print_func_def(func_def f) {
+	for (size_t i = 0;i < f.ins.top;++i) {
+		printf("%d| %s; ", f.lines.items[i], opcode_str[f.ins.items[i].op]);
+		switch (opcode_type[f.ins.items[i].op]) {
+		case OPT_N:
+			puts("");
+			break;
+		case OPT_RL:
+			printf("%d, %d\n", f.ins.items[i].reg, f.ins.items[i].lit);
+			break;
+		case OPT_RRR:
+			printf("%d, %d, %d\n", f.ins.items[i].rout, f.ins.items[i].rina, f.ins.items[i].rinb);
+			break;
+		case OPT_O:
+			printf("%d\n", f.ins.items[i].off);
+			break;
+		}
+	}
+	return 0;
+}
 
 int main(int argn, char **args) {
 	if (argn < 2) {
@@ -98,11 +127,11 @@ int main(int argn, char **args) {
 		fprintf(stderr, "Unable to parse file!");
 		return 1;
 	}
+	print_func_def(init);
 	size_t i = 0;
 	val_al reg = val_al_new(256);
 
 	while (true) {
-		printf("%zu\n", i);
 		inst ins = init.ins.items[i];
 		switch (ins.op) {
 		case OP_SETL:
@@ -110,7 +139,10 @@ int main(int argn, char **args) {
 			break;
 		case OP_END:
 			printf("Register 0; %f\n", reg.items[0].num);
+			printf("Register 1; %f\n", reg.items[1].num);
 			return 0;
+		default:
+			break;
 		}
 		i++;
 	}
