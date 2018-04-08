@@ -1,2 +1,6 @@
 local i = 23
 i = 21
+if 32 then
+	i = 42
+end
+

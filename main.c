@@ -53,10 +53,10 @@ typedef struct tab {
 } tab;
 
 typedef enum optype { OPT_N, OPT_RL, OPT_RRR, OPT_O } optype;
-typedef enum opcode  { OP_NOP,  OP_SETL, OP_END, OPCODE_NO} opcode;
+typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OPCODE_NO} opcode;
 char *opcode_str[OPCODE_NO] =
-                     {"NOP","SETL", "END"};
-optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N };
+                     {"NOP","SETL","END","COVER","JMP"};
+optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O };
 
 typedef struct inst {
 	uint8_t op;
@@ -134,6 +134,14 @@ int main(int argn, char **args) {
 	while (true) {
 		inst ins = init.ins.items[i];
 		switch (ins.op) {
+		case OP_COVER:
+			if (reg.items[ins.reg].type != VAL_NIL) {
+				i++;
+			}
+			break;
+		case OP_JMP:
+			i += ins.off - 1;
+			break;
 		case OP_SETL:
 			reg.items[ins.reg] = init.literals.items[ins.lit];
 			break;
@@ -146,4 +154,5 @@ int main(int argn, char **args) {
 		}
 		i++;
 	}
+	return 0;
 }

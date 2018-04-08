@@ -261,6 +261,7 @@ int parse_code(lexer *l, f_data *f);
 int parse_local(lexer *l, f_data *f);
 int parse_assign(lexer *l, f_data *f);
 int parse_expr(lexer *l, f_data *f, size_t reg);
+int parse_if(lexer *l, f_data *f);
 
 int parse(lexer l, func_def *f) {
 	lex_next(&l);
@@ -269,6 +270,8 @@ int parse(lexer l, func_def *f) {
 	if (err) {
 		return err;
 	}
+
+	push_inst(&l, &fd, (inst) {OP_END});
 	f->ins = fd.ins;
 	f->lines = fd.lines;
 	f->literals = fd.literals;
@@ -279,18 +282,22 @@ int parse(lexer l, func_def *f) {
 int parse_code(lexer *l, f_data *f) {
 	int err = 0;
 	while (!err) {
-		if (l->current.type == TOK_LOCAL) {
+		switch (l->current.type) {
+		case TOK_IF:
+			err = parse_if(l, f);
+			break;
+		case TOK_LOCAL:
 			err = parse_local(l, f);
-		} else {
+			break;
+		default:
 			err = parse_assign(l, f);
+			break;
 		}
 	}
 
-	push_inst(l, f, (inst) {OP_END});
 	return 0;
 }
 
-/*
 int parse_if(lexer *l, f_data *f) {
 	if (l->current.type != TOK_IF) {
 		return 1;
@@ -302,12 +309,26 @@ int parse_if(lexer *l, f_data *f) {
 	if (err) {
 		return -1;
 	}
+	if (l->current.type != TOK_THEN) {
+		return -1;
+	}
+	lex_next(l);
+
 	push_inst(l, f, (inst) {OP_COVER, reg});
-	push_inst(l, f, (inst) {OP_JMP, reg});
+	size_t start = f->ins.top;
+	push_inst(l, f, (inst) {OP_JMP});
 	free_temp(f);
+
+	parse_code(l, f);
+	f->ins.items[start].off = f->ins.top - start;
+
+	if (l->current.type != TOK_END) {
+		return -1;
+	}
+	lex_next(l);
+
 	return 0;
 }
-*/
 
 int parse_local(lexer *l, f_data *f) {
 	if (l->current.type != TOK_LOCAL) {
