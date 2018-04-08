@@ -1,6 +1,8 @@
 local i = 23
 i = 21
-if 32 then
+if nil then
 	i = 42
+else
+	i = 52
 end
 

@@ -55,7 +55,7 @@ typedef enum tokt {
 	// General Token types
 	TOK_ERR, TOK_IDENT, TOK_NUM, TOK_STR, TOK_EOI,
 	// Special identifiers
-	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END,
+	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_NIL,
 	// Special symbols
 	TOK_ASSIGN, TOK_EQ} tokt;
 
@@ -106,6 +106,7 @@ int parse_init(void) {
 	sident_map_set(&sidents, "then", TOK_THEN);
 	sident_map_set(&sidents, "else", TOK_ELSE);
 	sident_map_set(&sidents, "end", TOK_END);
+	sident_map_set(&sidents, "nil", TOK_NIL);
 	return 0;
 }
 
@@ -322,6 +323,18 @@ int parse_if(lexer *l, f_data *f) {
 	parse_code(l, f);
 	f->ins.items[start].off = f->ins.top - start;
 
+	if (l->current.type == TOK_ELSE) {
+		// Jump past exit jump added here
+		f->ins.items[start].off += 1;
+
+		size_t start = f->ins.top;
+		push_inst(l, f, (inst) {OP_JMP});
+		lex_next(l);
+
+		parse_code(l, f);
+		f->ins.items[start].off = f->ins.top - start;
+	}
+
 	if (l->current.type != TOK_END) {
 		return -1;
 	}
@@ -375,6 +388,12 @@ int parse_assign(lexer *l, f_data *f) {
 }
 
 int parse_expr(lexer *l, f_data *f, size_t reg) {
+	if (l->current.type == TOK_NIL) {
+		push_inst(l, f, (inst) {OP_NIL, reg, 0});
+		lex_next(l);
+		return 0;
+	}
+
 	if (l->current.type != TOK_NUM) {
 		printf("Number is not\n");
 		return 1;
