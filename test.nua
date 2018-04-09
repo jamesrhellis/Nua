@@ -1,8 +1,10 @@
 local i = 23
 i = 21
-if nil then
+
+if 26 > 21 then
 	i = 42
 else
 	i = 52
 end
+
 

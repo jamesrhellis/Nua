@@ -53,10 +53,10 @@ typedef struct tab {
 } tab;
 
 typedef enum optype { OPT_N, OPT_RL, OPT_RRR, OPT_O } optype;
-typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OPCODE_NO} opcode;
+typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB, OP_GT, OP_GE, OPCODE_NO} opcode;
 char *opcode_str[OPCODE_NO] =
-                     {"NOP","SETL","END","COVER","JMP","NIL"};
-optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O, OPT_RL };
+                     {"NOP","SETL","END","COVER","JMP","NIL","ADD","SUB","GT","GE"};
+optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O, OPT_RL , OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
 
 typedef struct inst {
 	uint8_t op;
@@ -147,6 +147,26 @@ int main(int argn, char **args) {
 			break;
 		case OP_SETL:
 			reg.items[ins.reg] = init.literals.items[ins.lit];
+			break;
+		case OP_ADD:
+			reg.items[ins.rout].num = reg.items[ins.rina].num + reg.items[ins.rinb].num;
+			break;
+		case OP_SUB:
+			reg.items[ins.rout].num = reg.items[ins.rina].num - reg.items[ins.rinb].num;
+			break;
+		case OP_GT:
+			if (reg.items[ins.rina].num > reg.items[ins.rinb].num) {
+				reg.items[ins.rout] = reg.items[ins.rinb];
+			} else {
+				reg.items[ins.rout] = (val) {VAL_NIL};
+			}
+			break;
+		case OP_GE:
+			if (reg.items[ins.rina].num >= reg.items[ins.rinb].num) {
+				reg.items[ins.rout] = reg.items[ins.rinb];
+			} else {
+				reg.items[ins.rout] = (val) {VAL_NIL};
+			}
 			break;
 		case OP_END:
 			printf("Register 0; %f\n", reg.items[0].num);

@@ -57,7 +57,7 @@ typedef enum tokt {
 	// Special identifiers
 	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_NIL,
 	// Special symbols
-	TOK_ASSIGN, TOK_EQ} tokt;
+	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT} tokt;
 
 typedef struct {
 	tokt type;
@@ -88,6 +88,23 @@ static inline token parse_symb(lexer *l) {
 	case '=':
 		return (token) {
 			TOK_ASSIGN,
+		};
+	case '+':
+		return (token) {
+			TOK_ADD,
+		};
+	case '-':
+		return (token) {
+			TOK_SUB,
+		};
+	case '>':
+		if (*l->pos == '=') {
+			return (token) {
+				TOK_GE,
+			};
+		}
+		return (token) {
+			TOK_GT,
 		};
 	default:
 		return (token) {
@@ -262,6 +279,7 @@ int parse_code(lexer *l, f_data *f);
 int parse_local(lexer *l, f_data *f);
 int parse_assign(lexer *l, f_data *f);
 int parse_expr(lexer *l, f_data *f, size_t reg);
+int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence);
 int parse_if(lexer *l, f_data *f);
 
 int parse(lexer l, func_def *f) {
@@ -306,7 +324,7 @@ int parse_if(lexer *l, f_data *f) {
 
 	lex_next(l);
 	size_t reg = alloc_temp(f);
-	int err = parse_expr(l, f, reg);
+	int err = parse_bin_expr(l, f, reg, 0);
 	if (err) {
 		return -1;
 	}
@@ -379,11 +397,70 @@ int parse_assign(lexer *l, f_data *f) {
 	}
 
 	lex_next(l);
-	if (parse_expr(l, f, reg)) {
+	if (parse_bin_expr(l, f, reg, 0)) {
 		printf("Unable to parse expr\n");
 		return -1;
 	}
 
+	return 0;
+}
+
+int emit_bin_code(lexer *l, f_data *f, tokt op, size_t left, size_t right) {
+	switch (op) {
+	case TOK_ADD:
+		push_inst(l, f, (inst) {OP_ADD, .rout = left, .rina = left, .rinb =  right});
+		break;
+	case TOK_SUB:
+		push_inst(l, f, (inst) {OP_SUB, .rout = left, .rina = left, .rinb =  right});
+		break;
+	case TOK_GT:
+		push_inst(l, f, (inst) {OP_GT, .rout = left, .rina = left, .rinb =  right});
+		break;
+	case TOK_GE:
+		push_inst(l, f, (inst) {OP_GE, .rout = left, .rina = left, .rinb =  right});
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+
+int bin_prec(tokt op) {
+	switch (op) {
+	case TOK_ADD:
+		return 3;
+	case TOK_SUB:
+		return 4;
+	case TOK_GT:
+		return 1;
+	case TOK_GE:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+int bin_assoc(tokt op) {
+	switch (op) {
+	default:
+		return 1;
+	}
+}
+
+int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence) {
+	parse_expr(l, f, left);
+	size_t right = alloc_temp(f);
+
+	while (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence) {
+		tokt op = l->current.type;
+		lex_next(l);
+
+		parse_bin_expr(l, f, right, bin_prec(op)+bin_assoc(op));
+		emit_bin_code(l, f, op, left, right);
+	}
+
+	free_temp(f);
 	return 0;
 }
 
