@@ -1,7 +1,7 @@
 local i = 23
 i = 21
 
-if 26 > 21 then
+if i + 5 > 23 then
 	i = 42
 else
 	i = 52

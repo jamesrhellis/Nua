@@ -280,6 +280,7 @@ int parse_local(lexer *l, f_data *f);
 int parse_assign(lexer *l, f_data *f);
 int parse_expr(lexer *l, f_data *f, size_t reg);
 int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence);
+int parse_pexpr(lexer *l, f_data *f, size_t reg);
 int parse_if(lexer *l, f_data *f);
 
 int parse(lexer l, func_def *f) {
@@ -324,7 +325,7 @@ int parse_if(lexer *l, f_data *f) {
 
 	lex_next(l);
 	size_t reg = alloc_temp(f);
-	int err = parse_bin_expr(l, f, reg, 0);
+	int err = parse_expr(l, f, reg);
 	if (err) {
 		return -1;
 	}
@@ -397,7 +398,7 @@ int parse_assign(lexer *l, f_data *f) {
 	}
 
 	lex_next(l);
-	if (parse_bin_expr(l, f, reg, 0)) {
+	if (parse_expr(l, f, reg)) {
 		printf("Unable to parse expr\n");
 		return -1;
 	}
@@ -426,7 +427,7 @@ int emit_bin_code(lexer *l, f_data *f, tokt op, size_t left, size_t right) {
 }
 
 
-int bin_prec(tokt op) {
+static inline int bin_prec(tokt op) {
 	switch (op) {
 	case TOK_ADD:
 		return 3;
@@ -441,15 +442,19 @@ int bin_prec(tokt op) {
 	}
 }
 
-int bin_assoc(tokt op) {
+static inline int bin_assoc(tokt op) {
 	switch (op) {
 	default:
 		return 1;
 	}
 }
 
+int parse_expr(lexer *l, f_data *f, size_t reg) {
+	return parse_bin_expr(l, f, reg, 0);
+}
+
 int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence) {
-	parse_expr(l, f, left);
+	parse_pexpr(l, f, left);
 	size_t right = alloc_temp(f);
 
 	while (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence) {
@@ -464,22 +469,30 @@ int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence) {
 	return 0;
 }
 
-int parse_expr(lexer *l, f_data *f, size_t reg) {
-	if (l->current.type == TOK_NIL) {
+int parse_pexpr(lexer *l, f_data *f, size_t reg) {
+	switch (l->current.type) {
+	case TOK_NIL:
 		push_inst(l, f, (inst) {OP_NIL, reg, 0});
 		lex_next(l);
 		return 0;
+	case TOK_NUM:
+		val_al_push(&f->literals, (val) { VAL_NUM, l->current.num});
+		push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top-1});
+		lex_next(l);
+		return 0;
+	case TOK_IDENT:{
+		ident_map_bucket *local = ident_map_find(&f->local, l->current.lexme);
+		if (!local) {
+			// FIXME remove later in dev once globals and uptable added
+			printf("Error unable to find local!\n");
+			return -1;
+		}
+		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = local->value, .rinb = local->value});
+		lex_next(l);
+		return 0;
 	}
-
-	if (l->current.type != TOK_NUM) {
-		printf("Number is not\n");
+	default:
 		return 1;
 	}
-
-	val_al_push(&f->literals, (val) { VAL_NUM, l->current.num});
-	push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top-1});
-
-	lex_next(l);
-	return 0;
 }
 
