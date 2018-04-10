@@ -86,6 +86,13 @@ typedef struct func_def {
 	val_al literals;
 } func_def;
 
+typedef struct frame {
+	size_t reg_base;
+	func_def func;
+} frame;
+
+RH_AL_MAKE(frame_stack, frame)
+
 #include "parse.c"
 
 int print_func_def(func_def f) {
@@ -129,7 +136,11 @@ int main(int argn, char **args) {
 	}
 	print_func_def(init);
 	size_t i = 0;
-	val_al reg = val_al_new(256);
+	val_al stack = val_al_new(512);
+	frame_stack func = frame_stack_new(8);
+	frame_stack_push(&func, (frame) { 0, init });
+
+	val *reg = stack.items;
 
 	while (true) {
 		inst ins = init.ins.items[i];
@@ -138,47 +149,50 @@ int main(int argn, char **args) {
 			i += ins.off;
 			continue;	// Avoid addition at end of loop
 		case OP_COVER:
-			if (reg.items[ins.reg].type != VAL_NIL) {
+			if (reg[ins.reg].type != VAL_NIL) {
 				i++;
 			}
 			break;
 		case OP_NIL:
-			reg.items[ins.reg] = (val) {VAL_NIL};
+			reg[ins.reg] = (val) {VAL_NIL};
 			break;
 		case OP_SETL:
-			reg.items[ins.reg] = init.literals.items[ins.lit];
+			reg[ins.reg] = init.literals.items[ins.lit];
 			break;
 		case OP_ADD:
-			reg.items[ins.rout].num = reg.items[ins.rina].num + reg.items[ins.rinb].num;
+			reg[ins.rout].num = reg[ins.rina].num + reg[ins.rinb].num;
 			break;
 		case OP_SUB:
-			reg.items[ins.rout].num = reg.items[ins.rina].num - reg.items[ins.rinb].num;
+			reg[ins.rout].num = reg[ins.rina].num - reg[ins.rinb].num;
 			break;
 		case OP_GT:
-			if (reg.items[ins.rina].num > reg.items[ins.rinb].num) {
-				reg.items[ins.rout] = reg.items[ins.rinb];
+			if (reg[ins.rina].num > reg[ins.rinb].num) {
+				reg[ins.rout] = reg[ins.rinb];
 			} else {
-				reg.items[ins.rout] = (val) {VAL_NIL};
+				reg[ins.rout] = (val) {VAL_NIL};
 			}
 			break;
 		case OP_GE:
-			if (reg.items[ins.rina].num >= reg.items[ins.rinb].num) {
-				reg.items[ins.rout] = reg.items[ins.rinb];
+			if (reg[ins.rina].num >= reg[ins.rinb].num) {
+				reg[ins.rout] = reg[ins.rinb];
 			} else {
-				reg.items[ins.rout] = (val) {VAL_NIL};
+				reg[ins.rout] = (val) {VAL_NIL};
 			}
 			break;
 		case OP_MOV:
-			reg.items[ins.rout] = reg.items[ins.rina];
+			reg[ins.rout] = reg[ins.rina];
 			break;
 		case OP_END:
-			printf("Register 0; %f\n", reg.items[0].num);
-			printf("Register 1; %f\n", reg.items[1].num);
+			printf("Register 0; %f\n", reg[0].num);
+			printf("Register 1; %f\n", reg[1].num);
 			return 0;
 		default:
 			break;
 		}
 		i++;
 	}
+
+	free(func.items);
+	free(stack.items);
 	return 0;
 }

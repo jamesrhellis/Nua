@@ -259,12 +259,14 @@ int add_scope(f_data *f) {
 
 int rem_scope(f_data *f) {
 	ident_map m = scope_al_pop(&f->scopes);
-	for (size_t i = 0;i < (1 << m.size);++i) {
-		if (!m.hash[i]) {
-			continue;
+	if (m.items) {
+		for (size_t i = 0;i < (1 << m.size);++i) {
+			if (!m.hash[i]) {
+				continue;
+			}
+			free(m.items[i].key);
+			--f->reg;
 		}
-		free(m.items[i].key);
-		--f->reg;
 	}
 
 	free(m.hash);
@@ -332,6 +334,7 @@ int parse(lexer l, func_def *f) {
 	lex_next(&l);
 	f_data fd = {0};
 	add_scope(&fd);
+
 	int err =  parse_code(&l, &fd);
 	if (err) {
 		return err;
@@ -372,6 +375,7 @@ int parse_while(lexer *l, f_data *f) {
 	if (l->current.type != TOK_WHILE) {
 		return 1;
 	}
+	add_scope(f);
 
 	lex_next(l);
 	size_t reg = alloc_temp(f);
@@ -399,6 +403,8 @@ int parse_while(lexer *l, f_data *f) {
 	}
 	lex_next(l);
 
+	rem_scope(f);
+
 	return 0;
 }
 
@@ -406,6 +412,8 @@ int parse_if(lexer *l, f_data *f) {
 	if (l->current.type != TOK_IF) {
 		return 1;
 	}
+
+	add_scope(f);
 
 	lex_next(l);
 	size_t reg = alloc_temp(f);
@@ -442,6 +450,8 @@ int parse_if(lexer *l, f_data *f) {
 		return -1;
 	}
 	lex_next(l);
+
+	rem_scope(f);
 
 	return 0;
 }
@@ -515,7 +525,7 @@ int emit_bin_code(lexer *l, f_data *f, tokt op, size_t left, size_t right) {
 static inline int bin_prec(tokt op) {
 	switch (op) {
 	case TOK_ADD:
-		return 3;
+		return 4;
 	case TOK_SUB:
 		return 4;
 	case TOK_GT:
