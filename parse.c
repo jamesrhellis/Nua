@@ -237,10 +237,11 @@ int lex_next(lexer *l) {
 }
 
 RH_HASH_MAKE(ident_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
+RH_AL_MAKE(scope_al, ident_map)
 
 typedef struct {
 	//Variable register allocation
-	ident_map local;
+	scope_al scopes;
 	size_t reg;
 	size_t temp;
 
@@ -252,6 +253,47 @@ typedef struct {
 	val_al literals;
 } f_data;
 
+int add_scope(f_data *f) {
+	scope_al_push(&f->scopes, (ident_map) {0});
+}
+
+int rem_scope(f_data *f) {
+	ident_map m = scope_al_pop(&f->scopes);
+	for (size_t i = 0;i < (1 << m.size);++i) {
+		if (!m.hash[i]) {
+			continue;
+		}
+		free(m.items[i].key);
+		--f->reg;
+	}
+
+	free(m.hash);
+	free(m.items);
+
+	return 0;
+}
+
+size_t *find_local(f_data *f, char *ident) {
+	ident_map_bucket *local = NULL;
+	for (int i = f->scopes.top-1;i >= 0;--i) {
+		if (local = ident_map_find(&f->scopes.items[i], ident)) {
+			return &local->value;
+		}
+	}
+
+	return NULL;
+}
+
+size_t *find_local_top(f_data *f, char *ident) {
+	ident_map_bucket *local = ident_map_find(&f->scopes.items[f->scopes.top-1], ident);
+	if (local) {
+		return &local->value;
+	}
+
+	return NULL;
+}
+
+
 size_t alloc_literal(f_data *f, val value) {
 	val_al_push(&f->literals, value);
 	return f->literals.top-1;
@@ -259,7 +301,7 @@ size_t alloc_literal(f_data *f, val value) {
 
 size_t alloc_local(f_data *f, char *name) {
 	size_t reg = f->reg++;
-	ident_map_set(&f->local, name, reg);
+	ident_map_set(&f->scopes.items[f->scopes.top-1], name, reg);
 	return reg;
 }
 
@@ -289,10 +331,12 @@ int parse_while(lexer *l, f_data *f);
 int parse(lexer l, func_def *f) {
 	lex_next(&l);
 	f_data fd = {0};
+	add_scope(&fd);
 	int err =  parse_code(&l, &fd);
 	if (err) {
 		return err;
 	}
+	rem_scope(&fd);
 
 	push_inst(&l, &fd, (inst) {OP_END});
 	f->ins = fd.ins;
@@ -411,6 +455,7 @@ int parse_local(lexer *l, f_data *f) {
 		return -1;
 	}
 	alloc_local(f, l->current.lexme);
+
 	if (parse_assign(l, f)) {
 		return -1;
 	}
@@ -423,13 +468,13 @@ int parse_assign(lexer *l, f_data *f) {
 		return 1;
 	}
 
-	ident_map_bucket *local = ident_map_find(&f->local, l->current.lexme);
+	size_t *local = find_local(f, l->current.lexme);
 	if (!local) {
 		// FIXME remove later in dev once globals and uptable added
 		printf("Error in local map\n");
 		return -1;
 	}
-	size_t reg = local->value;
+	size_t reg = *local;
 
 	lex_next(l);
 	if (l->current.type != TOK_ASSIGN) {
@@ -516,18 +561,18 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		lex_next(l);
 		return 0;
 	case TOK_NUM:
-		val_al_push(&f->literals, (val) { VAL_NUM, l->current.num});
-		push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top-1});
+		push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
+		val_al_push(&f->literals, (val) {VAL_NUM, l->current.num});
 		lex_next(l);
 		return 0;
 	case TOK_IDENT:{
-		ident_map_bucket *local = ident_map_find(&f->local, l->current.lexme);
+		size_t *local = find_local(f, l->current.lexme);
 		if (!local) {
 			// FIXME remove later in dev once globals and uptable added
 			printf("Error unable to find local!\n");
 			return -1;
 		}
-		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = local->value, .rinb = local->value});
+		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local, .rinb = *local});
 		lex_next(l);
 		return 0;
 	}
