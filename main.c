@@ -134,13 +134,13 @@ int main(int argn, char **args) {
 	while (true) {
 		inst ins = init.ins.items[i];
 		switch (ins.op) {
+		case OP_JMP:
+			i += ins.off;
+			continue;	// Avoid addition at end of loop
 		case OP_COVER:
 			if (reg.items[ins.reg].type != VAL_NIL) {
 				i++;
 			}
-			break;
-		case OP_JMP:
-			i += ins.off - 1;
 			break;
 		case OP_NIL:
 			reg.items[ins.reg] = (val) {VAL_NIL};

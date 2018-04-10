@@ -55,7 +55,7 @@ typedef enum tokt {
 	// General Token types
 	TOK_ERR, TOK_IDENT, TOK_NUM, TOK_STR, TOK_EOI,
 	// Special identifiers
-	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_NIL,
+	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_NIL,
 	// Special symbols
 	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT} tokt;
 
@@ -123,6 +123,8 @@ int parse_init(void) {
 	sident_map_set(&sidents, "then", TOK_THEN);
 	sident_map_set(&sidents, "else", TOK_ELSE);
 	sident_map_set(&sidents, "end", TOK_END);
+	sident_map_set(&sidents, "while", TOK_WHILE);
+	sident_map_set(&sidents, "do", TOK_DO);
 	sident_map_set(&sidents, "nil", TOK_NIL);
 	return 0;
 }
@@ -282,6 +284,7 @@ int parse_expr(lexer *l, f_data *f, size_t reg);
 int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence);
 int parse_pexpr(lexer *l, f_data *f, size_t reg);
 int parse_if(lexer *l, f_data *f);
+int parse_while(lexer *l, f_data *f);
 
 int parse(lexer l, func_def *f) {
 	lex_next(&l);
@@ -306,6 +309,9 @@ int parse_code(lexer *l, f_data *f) {
 		case TOK_IF:
 			err = parse_if(l, f);
 			break;
+		case TOK_WHILE:
+			err = parse_while(l, f);
+			break;
 		case TOK_LOCAL:
 			err = parse_local(l, f);
 			break;
@@ -314,6 +320,40 @@ int parse_code(lexer *l, f_data *f) {
 			break;
 		}
 	}
+
+	return 0;
+}
+
+int parse_while(lexer *l, f_data *f) {
+	if (l->current.type != TOK_WHILE) {
+		return 1;
+	}
+
+	lex_next(l);
+	size_t reg = alloc_temp(f);
+	size_t start = f->ins.top;
+	int err = parse_expr(l, f, reg);
+	if (err) {
+		return -1;
+	}
+	if (l->current.type != TOK_DO) {
+		return -1;
+	}
+	lex_next(l);
+
+	push_inst(l, f, (inst) {OP_COVER, reg});
+	size_t jmp_from = f->ins.top;
+	push_inst(l, f, (inst) {OP_JMP});
+	free_temp(f);
+
+	parse_code(l, f);
+	push_inst(l, f, (inst) {OP_JMP, .off = start - f->ins.top });
+	f->ins.items[jmp_from].off = f->ins.top - jmp_from;
+
+	if (l->current.type != TOK_END) {
+		return -1;
+	}
+	lex_next(l);
 
 	return 0;
 }
