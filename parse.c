@@ -245,6 +245,8 @@ typedef struct {
 	size_t reg;
 	size_t temp;
 
+	size_t max_reg;
+
 	//Instructions and debug
 	inst_list ins;
 	inst_lines lines;
@@ -303,18 +305,24 @@ size_t alloc_literal(f_data *f, val value) {
 
 size_t alloc_local(f_data *f, char *name) {
 	size_t reg = f->reg++;
+	if (f->reg > f->max_reg) {
+		f->max_reg = f->reg;
+	}
+
 	ident_map_set(&f->scopes.items[f->scopes.top-1], name, reg);
 	return reg;
 }
 
 size_t alloc_temp(f_data *f) {
-	return f->reg + f->temp++;
+	if (f->reg + ++f->temp > f->max_reg) {
+		f->max_reg = f->reg + f->temp;
+	}
+	return f->reg + f->temp;
 }
 
 void free_temp(f_data *f) {
 	f->temp--;
 }
-
 
 void push_inst(lexer *l, f_data *f, inst i) {
 	inst_list_push(&f->ins, i);
