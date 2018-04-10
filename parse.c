@@ -133,10 +133,10 @@ int parse_init(void) {
 static inline token parse_ident(lexer *l) {
 	const char *start = l->pos;
 
-	while (isalnum(*l->pos++)) {
+	while (isalnum(*++l->pos)) {
 	}
 
-	size_t len = l->pos - start - 1;
+	size_t len = l->pos - start;
 	char *str = malloc(len + 1);
 	memcpy(str, start, len);
 	str[len] = '\0';
@@ -326,7 +326,7 @@ void free_temp(f_data *f) {
 
 void push_inst(lexer *l, f_data *f, inst i) {
 	inst_list_push(&f->ins, i);
-	inst_lines_push(&f->lines, l->line);
+	inst_lines_push(&f->lines, l->line+1);
 }
 
 int parse_code(lexer *l, f_data *f);

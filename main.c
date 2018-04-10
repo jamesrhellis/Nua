@@ -95,6 +95,21 @@ RH_AL_MAKE(frame_stack, frame)
 
 #include "parse.c"
 
+int print_literals(func_def f) {
+	for (size_t i = 0;i < f.literals.top;++i) {
+		printf("%zu| %s; ", i, val_type_str[f.literals.items[i].type]);
+		switch (f.literals.items[i].type) {
+		case VAL_NUM:
+			printf("%f\n", f.literals.items[i].num);
+			break;
+		defualt:
+			puts("");
+			break;
+		}
+	}
+	return 0;
+}
+
 int print_func_def(func_def f) {
 	for (size_t i = 0;i < f.ins.top;++i) {
 		printf("%d| %s; ", f.lines.items[i], opcode_str[f.ins.items[i].op]);
@@ -135,6 +150,7 @@ int main(int argn, char **args) {
 		return 1;
 	}
 	print_func_def(init);
+	print_literals(init);
 	size_t i = 0;
 	val_al stack = val_al_new(512);
 	frame_stack func = frame_stack_new(8);
