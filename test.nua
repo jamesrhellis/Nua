@@ -2,7 +2,8 @@ local i = 23
 i = 21
 
 if i + 5 > 23 then
-	i = 42
+	i = 12
+	local i = 42
 else
 	i = 52
 end
