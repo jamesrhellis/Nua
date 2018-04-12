@@ -95,6 +95,50 @@ RH_AL_MAKE(frame_stack, frame)
 
 #include "parse.c"
 
+typedef struct mem_block {
+	struct mem_block *next;
+	char mem[];
+} mem_block;
+
+static inline mem_block *next_mem_block(mem_block *m) {
+	return (mem_block *)((uintptr_t)(m->next) & ~((uintptr_t)0x11));
+}
+
+static inline uint8_t mem_block_tag(mem_block *m) {
+	return (uintptr_t)(m) & ((uintptr_t)0x11);
+}
+
+RH_AL_MAKE(gc_process_al, mem_block *)
+mem_block *gc_list = NULL;
+gc_process_al gc_grey = {0};
+
+void *gc_alloc(size_t size) {
+	mem_block *mem = calloc(sizeof(mem_block) + size, 1);
+	mem->next = gc_list;
+	gc_list = mem;
+
+	return (void *) mem;
+}
+
+void gc_sweep(uint8_t white_tag) {
+	if (!gc_list) {
+		return;
+	}
+
+	mem_block **ptr = &gc_list;
+	while (*ptr) {
+		if (white_tag ==  mem_block_tag(*ptr)) {
+			mem_block *tofree = *ptr;
+			*ptr = (*ptr)->next;
+
+			free(tofree);
+			continue;
+		}
+
+		ptr = &((*ptr)->next);
+	}
+}
+
 int print_literals(func_def f) {
 	for (size_t i = 0;i < f.literals.top;++i) {
 		printf("%zu| %s; ", i, val_type_str[f.literals.items[i].type]);
