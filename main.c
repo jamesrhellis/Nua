@@ -273,23 +273,38 @@ int main(int argn, char **args) {
 			}
 			break;
 		case OP_ADD:
-			reg[ins.rout].num = reg[ins.rina].num + reg[ins.rinb].num;
+			if (reg[ins.rina].type == VAL_NUM
+			&&  reg[ins.rinb].type == VAL_NUM) {
+				reg[ins.rout] = (val) {VAL_NUM, reg[ins.rina].num + reg[ins.rinb].num};
+				break;
+			}
 			break;
 		case OP_SUB:
-			reg[ins.rout].num = reg[ins.rina].num - reg[ins.rinb].num;
+			if (reg[ins.rina].type == VAL_NUM
+			&&  reg[ins.rinb].type == VAL_NUM) {
+				reg[ins.rout] = (val) {VAL_NUM, reg[ins.rina].num - reg[ins.rinb].num};
+				break;
+			}
 			break;
 		case OP_GT:
-			if (reg[ins.rina].num > reg[ins.rinb].num) {
-				reg[ins.rout] = reg[ins.rinb];
-			} else {
-				reg[ins.rout] = (val) {VAL_NIL};
+			if (reg[ins.rina].type == VAL_NUM
+			&&  reg[ins.rinb].type == VAL_NUM) {
+				if (reg[ins.rina].num > reg[ins.rinb].num) {
+					reg[ins.rout] = reg[ins.rinb];
+				} else {
+					reg[ins.rout] = (val) {VAL_NIL};
+				}
+				break;
 			}
 			break;
 		case OP_GE:
-			if (reg[ins.rina].num >= reg[ins.rinb].num) {
-				reg[ins.rout] = reg[ins.rinb];
-			} else {
-				reg[ins.rout] = (val) {VAL_NIL};
+			if (reg[ins.rina].type == VAL_NUM
+			&&  reg[ins.rinb].type == VAL_NUM) {
+				if (reg[ins.rina].num >= reg[ins.rinb].num) {
+					reg[ins.rout] = reg[ins.rinb];
+				} else {
+					reg[ins.rout] = (val) {VAL_NIL};
+				}
 			}
 			break;
 		case OP_MOV:
