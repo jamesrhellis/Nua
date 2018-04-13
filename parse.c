@@ -57,7 +57,7 @@ typedef enum tokt {
 	// Special identifiers
 	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_NIL,
 	// Special symbols
-	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT} tokt;
+	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_TABL, TOK_TABR} tokt;
 
 typedef struct {
 	tokt type;
@@ -105,6 +105,14 @@ static inline token parse_symb(lexer *l) {
 		}
 		return (token) {
 			TOK_GT,
+		};
+	case '{':
+		return (token) {
+			TOK_TABL,
+		};
+	case '}':
+		return (token) {
+			TOK_TABR,
 		};
 	default:
 		return (token) {
@@ -572,6 +580,23 @@ int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence) {
 	return 0;
 }
 
+int parse_tab(lexer *l, f_data *f, size_t reg) {
+	if (l->current.type !=  TOK_TABL) {
+		return 1;
+	}
+	lex_next(l);
+
+	push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
+	val_al_push(&f->literals, (val) {VAL_TAB, .tab = calloc(sizeof(tab), 1)});
+
+	if (l->current.type !=  TOK_TABR) {
+		return -1;
+	}
+	lex_next(l);
+
+	return 0;
+}
+
 int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 	switch (l->current.type) {
 	case TOK_NIL:
@@ -583,6 +608,8 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		val_al_push(&f->literals, (val) {VAL_NUM, l->current.num});
 		lex_next(l);
 		return 0;
+	case TOK_TABL:
+		return parse_tab(l, f, reg);
 	case TOK_IDENT:{
 		size_t *local = find_local(f, l->current.lexme);
 		if (!local) {

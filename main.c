@@ -47,11 +47,6 @@ static inline int val_eq(const val a, const val b) {
 RH_HASH_MAKE(val_ht, val, val, val_hash, val_eq, 0.9)
 RH_AL_MAKE(val_al, val)
 
-typedef struct tab {
-	val_al al;
-	val_ht ht;
-} tab;
-
 typedef enum optype { OPT_N, OPT_RL, OPT_RRR, OPT_O } optype;
 typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB, OP_GT, OP_GE, OP_MOV, OPCODE_NO} opcode;
 char *opcode_str[OPCODE_NO] =
@@ -76,44 +71,39 @@ typedef struct inst {
 	};
 } inst;
 
-RH_AL_MAKE(inst_list, inst)
-RH_AL_MAKE(inst_lines, int)
-RH_HASH_MAKE(loc_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
-
-typedef struct func_def {
-	inst_list ins;
-	inst_lines lines;
-	val_al literals;
-} func_def;
-
-typedef struct frame {
-	size_t reg_base;
-	func_def func;
-} frame;
-
-RH_AL_MAKE(frame_stack, frame)
-
-#include "parse.c"
+typedef enum mem_type { MEM_FLAT, MEM_TAB, MEM_FUNC, MEM_SPARE} mem_type;
 
 typedef struct mem_block {
 	struct mem_block *next;
-	char mem[];
 } mem_block;
 
+typedef struct mem_grey_link {
+	struct mem_block *next;
+	struct mem_grey_link *grey_next;
+} mem_grey_link;
+
 static inline mem_block *next_mem_block(mem_block *m) {
-	return (mem_block *)((uintptr_t)(m->next) & ~((uintptr_t)0x11));
+	return (mem_block *)((uintptr_t)(m->next) & ~((uintptr_t)0x111));
+}
+
+static inline void mem_block_typetag(mem_block *m, uint8_t mem_type) {
+	uint8_t tag = mem_type << 1;
+	m->next = (mem_block *)((uintptr_t)m->next & ~((uintptr_t)0x110) | tag);
+}
+
+static inline void mem_block_coltag(mem_block *m, uint8_t colour) {
+	m->next = (mem_block *)((uintptr_t)m->next & ~((uintptr_t)0x1) | colour);
 }
 
 static inline uint8_t mem_block_tag(mem_block *m) {
-	return (uintptr_t)(m) & ((uintptr_t)0x11);
+	return (uintptr_t)(m->next) & ((uintptr_t)0x111);
 }
 
 RH_AL_MAKE(gc_process_al, mem_block *)
 mem_block *gc_list = NULL;
-gc_process_al gc_grey = {0};
 
 void *gc_alloc(size_t size) {
-	mem_block *mem = calloc(sizeof(mem_block) + size, 1);
+	mem_block *mem = calloc(size, 1);
 	mem->next = gc_list;
 	gc_list = mem;
 
@@ -139,17 +129,69 @@ void gc_sweep(uint8_t white_tag) {
 	}
 }
 
+RH_AL_MAKE(inst_list, inst)
+RH_AL_MAKE(inst_lines, int)
+RH_HASH_MAKE(loc_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
+
+typedef struct func_def {
+	mem_grey_link link;
+	char *file;
+
+	inst_list ins;
+	inst_lines lines;
+	val_al literals;
+} func_def;
+
+typedef struct frame {
+	size_t reg_base;
+	func_def func;
+} frame;
+
+typedef struct tab {
+	mem_grey_link link;
+	val_al al;
+	val_ht ht;
+} tab;
+
+RH_AL_MAKE(frame_stack, frame)
+
+#include "parse.c"
+
+int print_val(val v) {
+	switch (v.type) {
+	case VAL_NUM:
+		printf("%f\n", v.num);
+		break;
+	case VAL_TAB:
+		puts("{");
+		puts("AL:");
+		for (size_t i = 0;i < v.tab->al.top;++i) {
+			printf("%zu;", i);
+			print_val(v.tab->al.items[i]);
+		}
+		puts("Hash:");
+		if (v.tab->ht.items) {
+			for (size_t i = 0;i < RH_HASH_SIZE(v.tab->ht.size);++i) {
+				if (!v.tab->ht.hash[i]) {
+					continue;
+				}
+				print_val(v.tab->ht.items[i].key);
+				printf("= ");
+				print_val(v.tab->ht.items[i].value);
+			}
+		}
+		puts("}");
+		break;
+	defualt:
+		puts("");
+		break;
+	}
+}
+
 int print_literals(func_def f) {
 	for (size_t i = 0;i < f.literals.top;++i) {
 		printf("%zu| %s; ", i, val_type_str[f.literals.items[i].type]);
-		switch (f.literals.items[i].type) {
-		case VAL_NUM:
-			printf("%f\n", f.literals.items[i].num);
-			break;
-		defualt:
-			puts("");
-			break;
-		}
+		print_val(f.literals.items[i]);
 	}
 	return 0;
 }
@@ -217,7 +259,17 @@ int main(int argn, char **args) {
 			reg[ins.reg] = (val) {VAL_NIL};
 			break;
 		case OP_SETL:
-			reg[ins.reg] = init.literals.items[ins.lit];
+			switch (init.literals.items[ins.lit].type) {
+			case VAL_TAB:
+				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(sizeof(tab))};
+				tab *t = reg[ins.reg].tab;
+				reg[ins.reg].tab->al = val_al_clone(&init.literals.items[ins.lit].tab->al);
+				reg[ins.reg].tab->ht = val_ht_clone(&init.literals.items[ins.lit].tab->ht);
+				break;
+			defualt:
+				reg[ins.reg] = init.literals.items[ins.lit];
+				break;
+			}
 			break;
 		case OP_ADD:
 			reg[ins.rout].num = reg[ins.rina].num + reg[ins.rinb].num;
