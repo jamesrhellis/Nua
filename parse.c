@@ -608,8 +608,29 @@ int parse_tab(lexer *l, f_data *f, size_t reg) {
 	}
 	lex_next(l);
 
-	push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
-	val_al_push(&f->literals, (val) {VAL_TAB, .tab = calloc(sizeof(tab), 1)});
+	push_inst(l, f, (inst) {OP_TAB, reg});
+
+	size_t temp = alloc_temp(f);
+	while (!parse_expr(l, f, temp)) {
+		// Avoid unnessesary move instructions
+		if (inst_list_peek(&f->ins).op == OP_MOV) {
+			inst temp = inst_list_pop(&f->ins);
+			inst_list_push(&f->ins, (inst) { OP_PTAB, .rout = reg, .rina = temp.rout });
+		} else {
+			push_inst(l, f, (inst) {OP_PTAB, .rout = reg, .rina = temp});
+		}
+
+		if (l->current.type != TOK_COM) {
+			if (l->current.type != TOK_TABR) {
+				return -1;
+			}
+			break;
+		}
+
+		lex_next(l);
+	}
+
+	free_temp(f);
 
 	if (l->current.type !=  TOK_TABR) {
 		return -1;

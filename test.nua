@@ -1,8 +1,7 @@
 local i = 23
 i = 21
 
-local j = {}
-j = j[23]
+local j = {1, i, nil}
 
 if i + 5 > 23 then
 	i = 12

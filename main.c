@@ -29,6 +29,12 @@ static inline uint64_t val_hash(const val v) {
 	switch (v.type) {
 	case VAL_NUM:
 		hash = *((uint64_t *)&(v.num));
+	case VAL_TAB:
+		hash = *((uintptr_t *)(v.tab));
+	case VAL_STR:
+		hash = *((uintptr_t *)(v.str));
+	case VAL_FUNC:
+		hash = *((uintptr_t *)(v.func));
 	default:
 		break;
 	}
@@ -40,7 +46,13 @@ static inline uint64_t val_hash(const val v) {
 static inline int val_eq(const val a, const val b) {
 	switch (a.type) {
 	case VAL_NUM:
-		return (b.type == VAL_NUM) &&  a.num == b.num;
+		return (b.type == VAL_NUM) && a.num == b.num;
+	case VAL_TAB:
+		return (b.type == VAL_TAB) && a.tab == b.tab;
+	case VAL_STR:
+		return (b.type == VAL_STR) && a.str == b.str;
+	case VAL_FUNC:
+		return (b.type == VAL_FUNC) && a.func == b.func;
 	default:
 		return 0;
 	}
@@ -50,10 +62,12 @@ RH_HASH_MAKE(val_ht, val, val, val_hash, val_eq, 0.9)
 RH_AL_MAKE(val_al, val)
 
 typedef enum optype { OPT_N, OPT_RL, OPT_RRR, OPT_O } optype;
-typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB, OP_GT, OP_GE, OP_MOV, OP_GTAB, OPCODE_NO} opcode;
+typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB,
+	OP_GT, OP_GE, OP_MOV, OP_TAB, OP_GTAB, OP_STAB, OP_PTAB, OPCODE_NO} opcode;
 char *opcode_str[OPCODE_NO] =
-                     {"NOP","SETL","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV","GTAB"};
-optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O, OPT_RL , OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
+                     {"NOP","SETL","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV", "TAB", "GTAB", "STAB", "PTAB"};
+optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O, OPT_RL , OPT_RRR, OPT_RRR, OPT_RRR
+	, OPT_RRR, OPT_RRR, OPT_RL, OPT_RRR, OPT_RRR, OPT_RRR};
 
 typedef struct inst {
 	uint8_t op;
@@ -189,6 +203,10 @@ int tab_set(tab *t, val k, val v) {
 
 	val_ht_set(&t->ht, v, k);
 	return 0;
+}
+
+static inline int tab_push(tab *t, val v) {
+	return val_al_push(&t->al, v);
 }
 
 RH_AL_MAKE(frame_stack, frame)
@@ -347,6 +365,27 @@ int main(int argn, char **args) {
 			break;
 		case OP_MOV:
 			reg[ins.rout] = reg[ins.rina];
+			break;
+		case OP_TAB:
+			reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(sizeof(tab))};
+			break;
+		case OP_PTAB:
+			switch (reg[ins.rout].type) {
+			case VAL_TAB:
+				tab_push(reg[ins.rout].tab, reg[ins.rina]);
+				break;
+			default:
+				break;
+			}
+			break;
+		case OP_STAB:
+			switch (reg[ins.rout].type) {
+			case VAL_TAB:
+				tab_set(reg[ins.rout].tab, reg[ins.rina], reg[ins.rinb]);
+				break;
+			default:
+				break;
+			}
 			break;
 		case OP_GTAB:
 			switch (reg[ins.rina].type) {
