@@ -619,19 +619,61 @@ int parse_tab(lexer *l, f_data *f, size_t reg) {
 	return 0;
 }
 
+int parse_cont(lexer *l, f_data *f, size_t reg) {
+	switch (l->current.type) {
+	case TOK_INDL:{
+		size_t temp = alloc_temp(f);
+		lex_next(l);
+
+		parse_expr(l, f, temp);
+		if (l->current.type != TOK_INDR) {
+			return -1;
+		}
+
+		push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = reg, .rinb = temp});
+
+		free_temp(f);
+		lex_next(l);
+		break;
+	}
+	case TOK_DOT:{
+		size_t temp = alloc_temp(f);
+		lex_next(l);
+		if (l->current.type != TOK_IDENT) {
+			return -1;
+		}
+
+		push_inst(l, f, (inst) {OP_SETL, temp, f->literals.top});
+		val_al_push(&f->literals, (val) {VAL_STR, .str = l->current.lexme});
+
+		push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = reg, .rinb = temp});
+
+		free_temp(f);
+		lex_next(l);
+		break;
+	}
+	default:
+		break;
+	}
+	return 0;
+}
+
 int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 	switch (l->current.type) {
 	case TOK_NIL:
 		push_inst(l, f, (inst) {OP_NIL, reg, 0});
 		lex_next(l);
-		return 0;
+		break;
 	case TOK_NUM:
 		push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
 		val_al_push(&f->literals, (val) {VAL_NUM, l->current.num});
 		lex_next(l);
-		return 0;
+		break;
 	case TOK_TABL:
-		return parse_tab(l, f, reg);
+		if (parse_tab(l, f, reg)) {
+			return 1;
+		}
+		break;
 	case TOK_IDENT:{
 		size_t *local = find_local(f, l->current.lexme);
 		if (!local) {
@@ -641,10 +683,11 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		}
 		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local, .rinb = *local});
 		lex_next(l);
-		return 0;
+		break;
 	}
 	default:
 		return 1;
 	}
+	parse_cont(l, f, reg);
 }
 

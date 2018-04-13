@@ -1,6 +1,9 @@
 local i = 23
 i = 21
 
+local j = {}
+j = j[23]
+
 if i + 5 > 23 then
 	i = 12
 	local i = 42

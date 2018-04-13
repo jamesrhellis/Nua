@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <math.h>
+
 #include "gen/rh_tp.h"
 #include "gen/rh_hash.h"
 #include "gen/rh_al.h"
@@ -48,10 +50,10 @@ RH_HASH_MAKE(val_ht, val, val, val_hash, val_eq, 0.9)
 RH_AL_MAKE(val_al, val)
 
 typedef enum optype { OPT_N, OPT_RL, OPT_RRR, OPT_O } optype;
-typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB, OP_GT, OP_GE, OP_MOV, OPCODE_NO} opcode;
+typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB, OP_GT, OP_GE, OP_MOV, OP_GTAB, OPCODE_NO} opcode;
 char *opcode_str[OPCODE_NO] =
-                     {"NOP","SETL","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV"};
-optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O, OPT_RL , OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
+                     {"NOP","SETL","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV","GTAB"};
+optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O, OPT_RL , OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
 
 typedef struct inst {
 	uint8_t op;
@@ -153,6 +155,42 @@ typedef struct tab {
 	val_ht ht;
 } tab;
 
+val tab_get(tab *t, val v) {
+	// Try to find in al first
+	if (v.type == VAL_NUM && v.num == floor(v.num) && v.num > 0) {
+		size_t ind = (size_t)v.num;
+		if (ind < t->al.top) {
+			val ret = t->al.items[ind];
+			if (ret.type != VAL_NIL) {
+				return ret;
+			}
+		}
+	}
+
+	val_ht_bucket *b = val_ht_find(&t->ht, v);
+	if (!b) {
+		return (val) {VAL_NIL};
+	}
+
+	return b->value;
+}
+
+int tab_set(tab *t, val k, val v) {
+	// Try to set in al first
+	if (k.type == VAL_NUM && k.num == floor(k.num) && k.num > 0) {
+		size_t ind = (size_t)k.num;
+		if (ind < t->al.top) {
+			t->al.items[ind] = v;
+			return 0;
+		} else if (ind == t->al.top) {
+			return val_al_push(&t->al, v);
+		}
+	}
+
+	val_ht_set(&t->ht, v, k);
+	return 0;
+}
+
 RH_AL_MAKE(frame_stack, frame)
 
 #include "parse.c"
@@ -182,8 +220,8 @@ int print_val(val v) {
 		}
 		puts("}");
 		break;
-	defualt:
-		puts("");
+	default:
+		puts(val_type_str[v.type]);
 		break;
 	}
 
@@ -309,6 +347,15 @@ int main(int argn, char **args) {
 			break;
 		case OP_MOV:
 			reg[ins.rout] = reg[ins.rina];
+			break;
+		case OP_GTAB:
+			switch (reg[ins.rina].type) {
+			case VAL_TAB:
+				reg[ins.rout] = tab_get(reg[ins.rina].tab, reg[ins.rinb]);
+				break;
+			default:
+				break;
+			}
 			break;
 		case OP_END:
 			printf("Register 0; ");
