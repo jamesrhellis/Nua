@@ -57,7 +57,8 @@ typedef enum tokt {
 	// Special identifiers
 	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_NIL,
 	// Special symbols
-	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_TABL, TOK_TABR} tokt;
+	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_TABL, TOK_TABR,
+	TOK_INDL, TOK_INDR, TOK_COM, TOK_DOT} tokt;
 
 typedef struct {
 	tokt type;
@@ -86,6 +87,11 @@ char unexpected_newl[] = "Unexpected newline in string literal!";
 static inline token parse_symb(lexer *l) {
 	switch (*l->pos++) {
 	case '=':
+		if (*l->pos == '=') {
+			return (token) {
+				TOK_EQ,
+			};
+		}
 		return (token) {
 			TOK_ASSIGN,
 		};
@@ -113,6 +119,22 @@ static inline token parse_symb(lexer *l) {
 	case '}':
 		return (token) {
 			TOK_TABR,
+		};
+	case '[':
+		return (token) {
+			TOK_INDL,
+		};
+	case ']':
+		return (token) {
+			TOK_INDR,
+		};
+	case ',':
+		return (token) {
+			TOK_COM,
+		};
+	case '.':
+		return (token) {
+			TOK_DOT,
 		};
 	default:
 		return (token) {

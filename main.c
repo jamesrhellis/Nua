@@ -186,6 +186,8 @@ int print_val(val v) {
 		puts("");
 		break;
 	}
+
+	return 0;
 }
 
 int print_literals(func_def f) {
@@ -262,11 +264,10 @@ int main(int argn, char **args) {
 			switch (init.literals.items[ins.lit].type) {
 			case VAL_TAB:
 				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(sizeof(tab))};
-				tab *t = reg[ins.reg].tab;
 				reg[ins.reg].tab->al = val_al_clone(&init.literals.items[ins.lit].tab->al);
 				reg[ins.reg].tab->ht = val_ht_clone(&init.literals.items[ins.lit].tab->ht);
 				break;
-			defualt:
+			default:
 				reg[ins.reg] = init.literals.items[ins.lit];
 				break;
 			}
@@ -295,12 +296,16 @@ int main(int argn, char **args) {
 			reg[ins.rout] = reg[ins.rina];
 			break;
 		case OP_END:
-			printf("Register 0; %f\n", reg[0].num);
-			printf("Register 1; %f\n", reg[1].num);
+			printf("Register 0; ");
+			print_val(reg[0]);
+
+			printf("Register 1; ");
+			print_val(reg[1]);
 			return 0;
 		default:
 			break;
 		}
+		print_val(reg[0]);
 		i++;
 	}
 

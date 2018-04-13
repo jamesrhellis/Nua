@@ -1,6 +1,5 @@
 local i = 23
 i = 21
-local j = {}
 
 if i + 5 > 23 then
 	i = 12
