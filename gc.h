@@ -29,33 +29,29 @@ static inline uint8_t mem_block_tag(mem_block *m) {
 	return (uintptr_t)(m->next) & ((uintptr_t)0x111);
 }
 
-RH_AL_MAKE(gc_process_al, mem_block *)
-mem_block *gc_list = NULL;
-
-void *gc_alloc(size_t size) {
+void *gc_alloc(mem_block **p, size_t size) {
 	mem_block *mem = calloc(size, 1);
-	mem->next = gc_list;
-	gc_list = mem;
+	mem->next = *p;
+	*p = mem;
 
 	return (void *) mem;
 }
 
-void gc_sweep(uint8_t white_tag) {
-	if (!gc_list) {
+void gc_sweep(mem_block **p, uint8_t white_tag) {
+	if (!*p) {
 		return;
 	}
 
-	mem_block **ptr = &gc_list;
-	while (*ptr) {
-		if (white_tag ==  mem_block_tag(*ptr)) {
-			mem_block *tofree = *ptr;
-			*ptr = (*ptr)->next;
+	while (*p) {
+		if (white_tag ==  mem_block_tag(*p)) {
+			mem_block *tofree = *p;
+			*p = (*p)->next;
 
 			free(tofree);
 			continue;
 		}
 
-		ptr = &((*ptr)->next);
+		p = &((*p)->next);
 	}
 }
 

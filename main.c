@@ -90,7 +90,7 @@ int main(int argn, char **args) {
 		case OP_SETL:
 			switch (init.literals.items[ins.lit].type) {
 			case VAL_TAB:
-				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(sizeof(tab))};
+				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab))};
 				reg[ins.reg].tab->al = val_al_clone(&init.literals.items[ins.lit].tab->al);
 				reg[ins.reg].tab->ht = val_ht_clone(&init.literals.items[ins.lit].tab->ht);
 				break;
@@ -138,7 +138,7 @@ int main(int argn, char **args) {
 			reg[ins.rout] = reg[ins.rina];
 			break;
 		case OP_TAB:
-			reg[ins.rout] = (val) {VAL_TAB, .tab = gc_alloc(sizeof(tab))};
+			reg[ins.rout] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab))};
 			val_ht_resize(&reg[ins.rout].tab->ht, ins.rina);
 			val_al_resize(&reg[ins.rout].tab->al, RH_HASH_SIZE(ins.rinb));
 			break;
