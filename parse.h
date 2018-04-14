@@ -58,10 +58,10 @@ typedef enum tokt {
 	// General Token types
 	TOK_ERR, TOK_IDENT, TOK_NUM, TOK_STR, TOK_EOI,
 	// Special identifiers
-	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_NIL,
+	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_FUN, TOK_NIL,
 	// Special symbols
 	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_TABL, TOK_TABR,
-	TOK_INDL, TOK_INDR, TOK_COM, TOK_DOT} tokt;
+	TOK_INDL, TOK_INDR, TOK_BRL, TOK_BRR, TOK_COM, TOK_DOT} tokt;
 
 typedef struct {
 	tokt type;
@@ -131,6 +131,14 @@ static inline token parse_symb(lexer *l) {
 		return (token) {
 			TOK_INDR,
 		};
+	case '(':
+		return (token) {
+			TOK_BRL,
+		};
+	case ')':
+		return (token) {
+			TOK_BRR,
+		};
 	case ',':
 		return (token) {
 			TOK_COM,
@@ -158,6 +166,7 @@ int parse_init(void) {
 	sident_map_set(&sidents, "end", TOK_END);
 	sident_map_set(&sidents, "while", TOK_WHILE);
 	sident_map_set(&sidents, "do", TOK_DO);
+	sident_map_set(&sidents, "fun", TOK_FUN);
 	sident_map_set(&sidents, "nil", TOK_NIL);
 	return 0;
 }
@@ -304,8 +313,7 @@ int rem_scope(f_data *f) {
 		}
 	}
 
-	free(m.hash);
-	free(m.items);
+	ident_map_free(&m);
 
 	return 0;
 }
@@ -329,7 +337,6 @@ size_t *find_local_top(f_data *f, char *ident) {
 
 	return NULL;
 }
-
 
 size_t alloc_literal(f_data *f, val value) {
 	val_al_push(&f->literals, value);
@@ -683,6 +690,50 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 	return 0;
 }
 
+int parse_fun(lexer *l, f_data *f, size_t reg) {
+	if (l->current.type != TOK_BRL) {
+		return 1;
+	}
+	lex_next(l);
+
+	f_data fd = {0};
+	add_scope(&fd);
+
+	while (l->current.type == TOK_IDENT) {
+		alloc_local(f, l->current.lexme);
+		lex_next(l);
+
+		if (l->current.type == TOK_COM) {
+			lex_next(l);
+		} else {
+			break;
+		}
+	}
+
+	if (l->current.type != TOK_BRR) {
+		return 1;
+	}
+	lex_next(l);
+
+	int err = parse_code(l, &fd);
+	if (err) {
+		return err;
+	}
+	rem_scope(&fd);
+
+	func_def *fun_def = calloc(sizeof(*fun_def), 1);
+	fun_def->ins = fd.ins;
+	fun_def->max_reg = fd.max_reg;
+	fun_def->lines = fd.lines;
+	fun_def->literals = fd.literals;
+
+	func *fun = calloc(sizeof(*fun), 1);
+	*fun = (func) { FUNC_NUA, .def = fun_def};
+	alloc_literal(f, (val) { VAL_FUNC, .func = fun });
+
+	return 0;
+}
+
 int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 	switch (l->current.type) {
 	case TOK_NIL:
@@ -708,6 +759,11 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		}
 		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local, .rinb = *local});
 		lex_next(l);
+		break;
+	}
+	case TOK_FUN:{
+		lex_next(l);
+		parse_fun(l, f, reg);
 		break;
 	}
 	default:

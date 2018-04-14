@@ -183,14 +183,14 @@ typedef enum funct { FUNC_ERR, FUNC_NUA, FUNC_C } funct;
 typedef struct func {
 	funct type;
 	union {
-	struct {
-		tab *uptable;
-		func_def *f;
-	};
-	struct {
-		// TODO Real c function type
-		void *c_func;
-	};
+		struct {
+			val_al upvals;
+			func_def *def;
+		};
+		struct {
+			// TODO Real c function type
+			void *c_func;
+		};
 	};
 } func;
 

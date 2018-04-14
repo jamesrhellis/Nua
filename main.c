@@ -16,7 +16,7 @@ typedef struct frame {
 	size_t ins;
 	tab *global;
 
-	func_def func;
+	func *func;
 } frame;
 
 RH_AL_MAKE(frame_stack, frame)
@@ -36,6 +36,7 @@ typedef struct global {
 	thread_list threads;
 
 	// Mem management
+	size_t white;		// Current val of white tag (0, 1)
 	mem_block *gc_list;	// All objects
 	mem_grey_link *gc_grey;	// Incrementally processed objects
 } global;
@@ -53,28 +54,32 @@ int main(int argn, char **args) {
 
 	parse_init();
 
-	func_def init;
-	if (parse((lexer){file}, &init)) {
+	func *base = calloc(sizeof(*base), 1);
+	*base = (func) { FUNC_NUA, .def = calloc(sizeof(*base->def), 1) };
+
+	if (parse((lexer){file}, base->def)) {
 		fprintf(stderr, "Unable to parse file!");
 		return 1;
 	}
 
-	print_func_def(init);
-	print_literals(init);
+	print_func_def(*base->def);
+	print_literals(*base->def);
 
 	global g = {0}; {
 		thread t = {.stack = val_al_new(256), .func = frame_stack_new(8)};
-		frame_stack_push(&t.func, (frame) {.func = init});
+		frame_stack_push(&t.func, (frame) {.func = base});
 
 		thread_list_push(&g.threads, t);
 	}
 
 	thread *t = &g.threads.items[0];
 	frame *top = frame_stack_rpeek(&g.threads.items[0].func);
+
 	val *reg = &t->stack.items[top->reg_base];
+	val *lit = top->func->def->literals.items;
 
 	while (true) {
-		inst ins = top->func.ins.items[top->ins];
+		inst ins = top->func->def->ins.items[top->ins];
 		switch (ins.op) {
 		case OP_JMP:
 			top->ins += ins.off;
@@ -88,14 +93,14 @@ int main(int argn, char **args) {
 			reg[ins.reg] = (val) {VAL_NIL};
 			break;
 		case OP_SETL:
-			switch (init.literals.items[ins.lit].type) {
+			switch (top->func->def->literals.items[ins.lit].type) {
 			case VAL_TAB:
 				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab))};
-				reg[ins.reg].tab->al = val_al_clone(&init.literals.items[ins.lit].tab->al);
-				reg[ins.reg].tab->ht = val_ht_clone(&init.literals.items[ins.lit].tab->ht);
+				reg[ins.reg].tab->al = val_al_clone(&lit[ins.lit].tab->al);
+				reg[ins.reg].tab->ht = val_ht_clone(&lit[ins.lit].tab->ht);
 				break;
 			default:
-				reg[ins.reg] = init.literals.items[ins.lit];
+				reg[ins.reg] = lit[ins.lit];
 				break;
 			}
 			break;
