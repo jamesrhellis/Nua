@@ -5,13 +5,14 @@ typedef enum val_type { VAL_NIL, VAL_NUM, VAL_STR, VAL_FUNC, VAL_TAB, VAL_TYPE_N
 const char *val_type_str[VAL_TYPE_NO] = { "NIL", "NUM", "STR", "FUNC", "TAB" };
 
 struct tab;
+struct func;
 
 typedef struct {
 	val_type type;
 	union {
 		double num;
 		char *str;
-		void *func;
+		struct func *func;
 		struct tab *tab;
 
 	};
@@ -99,11 +100,122 @@ int tab_set(tab *t, val k, val v) {
 static inline int tab_push(tab *t, val v) {
 	return val_al_push(&t->al, v);
 }
+typedef enum optype { OPT_N, OPT_RL, OPT_RRR, OPT_O } optype;
+typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB,
+	OP_GT, OP_GE, OP_MOV, OP_TAB, OP_GTAB, OP_STAB, OP_PTAB, OP_CALL, OP_RET, OPCODE_NO} opcode;
+char *opcode_str[OPCODE_NO] =
+                     {"NOP","SETL","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV", "TAB", "GTAB", "STAB", "PTAB", "CALL", "RET"};
+optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O, OPT_RL , OPT_RRR, OPT_RRR, OPT_RRR
+	, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
+
+typedef struct inst {
+	uint8_t op;
+	union {
+		struct {
+			uint8_t reg;
+			uint16_t lit;
+		};
+		struct {
+			uint8_t rout;
+			uint8_t rina;
+			uint8_t rinb;
+		};
+		struct {
+			int off : 24;
+		};
+	};
+} inst;
+
+RH_AL_MAKE(inst_list, inst)
+RH_AL_MAKE(inst_lines, int)
+RH_HASH_MAKE(loc_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
+
+typedef struct func_def {
+	mem_grey_link link;
+
+	// Properties
+	uint8_t max_reg;
+	uint8_t no_args;
+
+	// Code
+	inst_list ins;
+	val_al literals;
+
+	// Debug data
+	char *file;
+	inst_lines lines;
+} func_def;
+
+typedef enum funct { FUNC_ERR, FUNC_NUA, FUNC_C } funct;
+
+typedef struct func {
+	funct type;
+	union {
+		struct {
+			val_al upvals;
+			func_def *def;
+		};
+		struct {
+			// TODO Real c function type
+			void *c_func;
+		};
+	};
+} func;
+
+int print_val(val v);
+
+int print_literals(func_def f) {
+	for (size_t i = 0;i < f.literals.top;++i) {
+		printf("%zu| %s; ", i, val_type_str[f.literals.items[i].type]);
+		print_val(f.literals.items[i]);
+	}
+	return 0;
+}
+
+int print_inst(inst i) {
+	printf("%s; ", opcode_str[i.op]);
+	switch (opcode_type[i.op]) {
+	case OPT_N:
+		puts("");
+		break;
+	case OPT_RL:
+		printf("%d, %d\n", i.reg, i.lit);
+		break;
+	case OPT_RRR:
+		printf("%d, %d, %d\n", i.rout, i.rina, i.rinb);
+		break;
+	case OPT_O:
+		printf("%d\n", i.off);
+		break;
+	}
+}
+
+int print_func_def(func_def f) {
+	for (size_t i = 0;i < f.ins.top;++i) {
+		printf("%d| %s; ", f.lines.items[i], opcode_str[f.ins.items[i].op]);
+		print_inst(f.ins.items[i]);
+	}
+	return 0;
+}
 
 int print_val(val v) {
 	switch (v.type) {
 	case VAL_NUM:
 		printf("%f\n", v.num);
+		break;
+	case VAL_FUNC:
+		switch (v.func->type) {
+		case FUNC_NUA:
+			puts("FUNC_NUA:");
+			puts("{");
+			print_func_def(*v.func->def);
+			print_literals(*v.func->def);
+			puts("}");
+			break;
+		case FUNC_C:
+			puts("FUNC_C:");
+			break;
+		}
 		break;
 	case VAL_TAB:
 		puts("{");
@@ -133,93 +245,4 @@ int print_val(val v) {
 	return 0;
 }
 
-typedef enum optype { OPT_N, OPT_RL, OPT_RRR, OPT_O } optype;
-typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB,
-	OP_GT, OP_GE, OP_MOV, OP_TAB, OP_GTAB, OP_STAB, OP_PTAB, OPCODE_NO} opcode;
-char *opcode_str[OPCODE_NO] =
-                     {"NOP","SETL","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV", "TAB", "GTAB", "STAB", "PTAB"};
-optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O, OPT_RL , OPT_RRR, OPT_RRR, OPT_RRR
-	, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
-
-typedef struct inst {
-	uint8_t op;
-	union {
-		struct {
-			uint8_t reg;
-			uint16_t lit;
-		};
-		struct {
-			uint8_t rout;
-			uint8_t rina;
-			uint8_t rinb;
-		};
-		struct {
-			int off : 24;
-		};
-	};
-} inst;
-
-RH_AL_MAKE(inst_list, inst)
-RH_AL_MAKE(inst_lines, int)
-RH_HASH_MAKE(loc_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
-
-typedef struct func_def {
-	mem_grey_link link;
-
-	// Properties
-	uint8_t max_reg;
-
-	// Code
-	inst_list ins;
-	val_al literals;
-
-	// Debug data
-	char *file;
-	inst_lines lines;
-} func_def;
-
-typedef enum funct { FUNC_ERR, FUNC_NUA, FUNC_C } funct;
-
-typedef struct func {
-	funct type;
-	union {
-		struct {
-			val_al upvals;
-			func_def *def;
-		};
-		struct {
-			// TODO Real c function type
-			void *c_func;
-		};
-	};
-} func;
-
-int print_literals(func_def f) {
-	for (size_t i = 0;i < f.literals.top;++i) {
-		printf("%zu| %s; ", i, val_type_str[f.literals.items[i].type]);
-		print_val(f.literals.items[i]);
-	}
-	return 0;
-}
-
-int print_func_def(func_def f) {
-	for (size_t i = 0;i < f.ins.top;++i) {
-		printf("%d| %s; ", f.lines.items[i], opcode_str[f.ins.items[i].op]);
-		switch (opcode_type[f.ins.items[i].op]) {
-		case OPT_N:
-			puts("");
-			break;
-		case OPT_RL:
-			printf("%d, %d\n", f.ins.items[i].reg, f.ins.items[i].lit);
-			break;
-		case OPT_RRR:
-			printf("%d, %d, %d\n", f.ins.items[i].rout, f.ins.items[i].rina, f.ins.items[i].rinb);
-			break;
-		case OPT_O:
-			printf("%d\n", f.ins.items[i].off);
-			break;
-		}
-	}
-	return 0;
-}
 #endif

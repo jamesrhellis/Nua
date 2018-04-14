@@ -58,7 +58,7 @@ typedef enum tokt {
 	// General Token types
 	TOK_ERR, TOK_IDENT, TOK_NUM, TOK_STR, TOK_EOI,
 	// Special identifiers
-	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_FUN, TOK_NIL,
+	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_FUN, TOK_RET, TOK_NIL,
 	// Special symbols
 	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_TABL, TOK_TABR,
 	TOK_INDL, TOK_INDR, TOK_BRL, TOK_BRR, TOK_COM, TOK_DOT} tokt;
@@ -167,6 +167,7 @@ int parse_init(void) {
 	sident_map_set(&sidents, "while", TOK_WHILE);
 	sident_map_set(&sidents, "do", TOK_DO);
 	sident_map_set(&sidents, "fun", TOK_FUN);
+	sident_map_set(&sidents, "ret", TOK_RET);
 	sident_map_set(&sidents, "nil", TOK_NIL);
 	return 0;
 }
@@ -345,8 +346,8 @@ size_t alloc_literal(f_data *f, val value) {
 
 size_t alloc_local(f_data *f, char *name) {
 	size_t reg = f->reg++;
-	if (f->reg > f->max_reg) {
-		f->max_reg = f->reg;
+	if (reg > f->max_reg) {
+		f->max_reg = reg;
 	}
 
 	ident_map_set(&f->scopes.items[f->scopes.top-1], name, reg);
@@ -354,10 +355,10 @@ size_t alloc_local(f_data *f, char *name) {
 }
 
 size_t alloc_temp(f_data *f) {
-	if (f->reg + ++f->temp > f->max_reg) {
+	if (f->reg + f->temp > f->max_reg) {
 		f->max_reg = f->reg + f->temp;
 	}
-	return f->reg + f->temp;
+	return f->reg + f->temp++;
 }
 
 void free_temp(f_data *f) {
@@ -376,6 +377,7 @@ int parse_expr(lexer *l, f_data *f, size_t reg);
 int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence);
 int parse_pexpr(lexer *l, f_data *f, size_t reg);
 int parse_if(lexer *l, f_data *f);
+int parse_ret(lexer *l, f_data *f);
 int parse_while(lexer *l, f_data *f);
 
 int parse(lexer l, func_def *f) {
@@ -410,6 +412,9 @@ int parse_code(lexer *l, f_data *f) {
 			break;
 		case TOK_LOCAL:
 			err = parse_local(l, f);
+			break;
+		case TOK_RET:
+			err = parse_ret(l, f);
 			break;
 		default:
 			err = parse_assign(l, f);
@@ -505,6 +510,26 @@ int parse_if(lexer *l, f_data *f) {
 	return 0;
 }
 
+int parse_ret(lexer *l, f_data *f) {
+	if (l->current.type != TOK_RET) {
+		return 1;
+	}
+	lex_next(l);
+
+	size_t t = alloc_temp(f);
+	int err = parse_expr(l, f, t);
+	if (err) {
+		return err;
+	}
+
+	push_inst(l, f, (inst) {OP_RET, .rout = 1, .rina = t});
+	free_temp(f);
+
+	return 0;
+}
+
+
+
 int parse_local(lexer *l, f_data *f) {
 	if (l->current.type != TOK_LOCAL) {
 		return 1;
@@ -598,7 +623,9 @@ int parse_expr(lexer *l, f_data *f, size_t reg) {
 }
 
 int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence) {
-	parse_pexpr(l, f, left);
+	if (parse_pexpr(l, f, left)) {
+		return 1;
+	}
 	size_t right = alloc_temp(f);
 
 	while (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence) {
@@ -684,7 +711,48 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 		lex_next(l);
 		break;
 	}
-	default:
+	case TOK_BRL:{
+		size_t f_reg = reg;
+		if (reg != f->reg + f->temp) {
+			f_reg = alloc_temp(f);
+		}
+
+		if (inst_list_peek(&f->ins).op == OP_MOV) {
+			inst temp = inst_list_pop(&f->ins);
+			inst_list_push(&f->ins, (inst) { OP_MOV, .rout = f_reg, .rina = temp.rina });
+		}
+		lex_next(l);
+
+		size_t no_args = 0;
+		size_t temp = alloc_temp(f);
+		while (!parse_expr(l, f, temp)) {
+			++no_args;
+
+			if (l->current.type == TOK_COM) {
+				lex_next(l);
+			}
+
+			temp = alloc_temp(f);
+		}
+
+		free_temp(f);
+		for (int i = 0;i < no_args;++i) {
+			free_temp(f);
+		}
+
+		if (l->current.type != TOK_BRR) {
+			return -1;
+		}
+		lex_next(l);
+
+		push_inst(l, f, (inst) {OP_CALL, .rout = f_reg, .rina = no_args, .rinb = 1});
+
+		if (reg != f_reg) {
+			free_temp(f);
+			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = f_reg});
+		}
+		break;
+	}default:
 		break;
 	}
 	return 0;
@@ -699,8 +767,10 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	f_data fd = {0};
 	add_scope(&fd);
 
+	size_t no_args = 0;
 	while (l->current.type == TOK_IDENT) {
-		alloc_local(f, l->current.lexme);
+		++no_args;
+		alloc_local(&fd, l->current.lexme);
 		lex_next(l);
 
 		if (l->current.type == TOK_COM) {
@@ -711,7 +781,7 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	}
 
 	if (l->current.type != TOK_BRR) {
-		return 1;
+		return -1;
 	}
 	lex_next(l);
 
@@ -721,14 +791,22 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	}
 	rem_scope(&fd);
 
+	if (l->current.type != TOK_END) {
+		return -1;
+	}
+	lex_next(l);
+
 	func_def *fun_def = calloc(sizeof(*fun_def), 1);
 	fun_def->ins = fd.ins;
 	fun_def->max_reg = fd.max_reg;
+	fun_def->no_args = no_args;
 	fun_def->lines = fd.lines;
 	fun_def->literals = fd.literals;
 
 	func *fun = calloc(sizeof(*fun), 1);
 	*fun = (func) { FUNC_NUA, .def = fun_def};
+
+	push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
 	alloc_literal(f, (val) { VAL_FUNC, .func = fun });
 
 	return 0;
@@ -760,13 +838,11 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local, .rinb = *local});
 		lex_next(l);
 		break;
-	}
-	case TOK_FUN:{
+	} case TOK_FUN:{
 		lex_next(l);
 		parse_fun(l, f, reg);
 		break;
-	}
-	default:
+	} default:
 		return 1;
 	}
 	parse_cont(l, f, reg);

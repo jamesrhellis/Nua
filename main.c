@@ -73,7 +73,7 @@ int main(int argn, char **args) {
 	}
 
 	thread *t = &g.threads.items[0];
-	frame *top = frame_stack_rpeek(&g.threads.items[0].func);
+	frame *top = frame_stack_rpeek(&t->func);
 
 	val *reg = &t->stack.items[top->reg_base];
 	val *lit = top->func->def->literals.items;
@@ -93,16 +93,63 @@ int main(int argn, char **args) {
 			reg[ins.reg] = (val) {VAL_NIL};
 			break;
 		case OP_SETL:
-			switch (top->func->def->literals.items[ins.lit].type) {
+			switch (lit[ins.lit].type) {
 			case VAL_TAB:
 				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab))};
 				reg[ins.reg].tab->al = val_al_clone(&lit[ins.lit].tab->al);
 				reg[ins.reg].tab->ht = val_ht_clone(&lit[ins.lit].tab->ht);
 				break;
+			case VAL_FUNC:
+				reg[ins.reg] = (val) {VAL_FUNC, .tab = gc_alloc(&g.gc_list, sizeof(tab))};
+				*reg[ins.reg].func = (func) {FUNC_NUA, .def = lit[ins.lit].func->def};
+				break;
 			default:
 				reg[ins.reg] = lit[ins.lit];
 				break;
 			}
+			break;
+		case OP_CALL:
+			// OP is interpreted
+			// .rout = func register, and base of func args - 1, base of return vals
+			// .rina = no args, call has to pad with nils
+			// .rinb = no return vals, return has to pad with nils
+			frame_stack_push(&t->func, (frame) {.func = reg[ins.rout].func, .reg_base = &reg[ins.rout] - t->stack.items});
+			size_t max = t->stack.top + reg[ins.rout].func->def->max_reg;
+
+			if (max >= t->stack.size) {
+				val_al_resize(&t->stack, t->stack.size * 2);
+			}
+
+			for (int i = ins.rina;i < reg[ins.rout].func->def->no_args;++i) {
+				reg[ins.rout + i] = (val) { VAL_NIL };
+			}
+
+			top = frame_stack_rpeek(&t->func);
+
+			reg = &t->stack.items[top->reg_base];
+			lit = top->func->def->literals.items;
+			break;
+		case OP_RET:
+			// OP is interpreted
+			// .rina = base register
+			// .rout = no values to return
+			frame_stack_pop(&t->func);
+			size_t no_ret = ins.rout;
+
+			for (int i = 0;i < no_ret;++i) {
+				reg[i] = reg[ins.rina + i];
+			}
+
+			top = frame_stack_rpeek(&t->func);
+
+			reg = &t->stack.items[top->reg_base];
+			lit = top->func->def->literals.items;
+
+			ins = top->func->def->ins.items[top->ins];
+			for (int i = no_ret;i < ins.rinb;++i) {
+				reg[ins.rout + i] = (val) { VAL_NIL };
+			}
+
 			break;
 		case OP_ADD:
 			if (reg[ins.rina].type == VAL_NUM
