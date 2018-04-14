@@ -1,3 +1,6 @@
+#ifndef PARSE_H
+#define PARSE_H
+
 #include <stdio.h>
 #include <errno.h>
 #include <ctype.h>
@@ -712,3 +715,4 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 	parse_cont(l, f, reg);
 }
 
+#endif
