@@ -11,6 +11,14 @@
 #include "val.h"
 #include "parse.h"
 
+typedef struct frame {
+	size_t reg_base;
+	size_t ins;
+	tab *global;
+
+	func_def func;
+} frame;
+
 RH_AL_MAKE(frame_stack, frame)
 
 typedef struct thread {
@@ -50,24 +58,30 @@ int main(int argn, char **args) {
 		fprintf(stderr, "Unable to parse file!");
 		return 1;
 	}
+
 	print_func_def(init);
 	print_literals(init);
-	size_t i = 0;
-	val_al stack = val_al_new(512);
-	frame_stack func = frame_stack_new(8);
-	frame_stack_push(&func, (frame) { 0, init });
 
-	val *reg = stack.items;
+	global g = {0}; {
+		thread t = {.stack = val_al_new(256), .func = frame_stack_new(8)};
+		frame_stack_push(&t.func, (frame) {.func = init});
+
+		thread_list_push(&g.threads, t);
+	}
+
+	thread *t = &g.threads.items[0];
+	frame *top = frame_stack_rpeek(&g.threads.items[0].func);
+	val *reg = &t->stack.items[top->reg_base];
 
 	while (true) {
-		inst ins = init.ins.items[i];
+		inst ins = top->func.ins.items[top->ins];
 		switch (ins.op) {
 		case OP_JMP:
-			i += ins.off;
+			top->ins += ins.off;
 			continue;	// Avoid addition at end of loop
 		case OP_COVER:
 			if (reg[ins.reg].type != VAL_NIL) {
-				i++;
+				top->ins++;
 			}
 			break;
 		case OP_NIL:
@@ -165,10 +179,8 @@ int main(int argn, char **args) {
 		default:
 			break;
 		}
-		i++;
+		top->ins++;
 	}
 
-	free(func.items);
-	free(stack.items);
 	return 0;
 }

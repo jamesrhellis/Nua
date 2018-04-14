@@ -165,17 +165,34 @@ RH_HASH_MAKE(loc_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
 
 typedef struct func_def {
 	mem_grey_link link;
-	char *file;
 
+	// Properties
+	uint8_t max_reg;
+
+	// Code
 	inst_list ins;
-	inst_lines lines;
 	val_al literals;
+
+	// Debug data
+	char *file;
+	inst_lines lines;
 } func_def;
 
-typedef struct frame {
-	size_t reg_base;
-	func_def func;
-} frame;
+typedef enum funct { FUNC_ERR, FUNC_NUA, FUNC_C } funct;
+
+typedef struct func {
+	funct type;
+	union {
+	struct {
+		tab *uptable;
+		func_def *f;
+	};
+	struct {
+		// TODO Real c function type
+		void *c_func;
+	};
+	};
+} func;
 
 int print_literals(func_def f) {
 	for (size_t i = 0;i < f.literals.top;++i) {

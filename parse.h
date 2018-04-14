@@ -384,6 +384,7 @@ int parse(lexer l, func_def *f) {
 
 	push_inst(&l, &fd, (inst) {OP_END});
 	f->ins = fd.ins;
+	f->max_reg = fd.max_reg;
 	f->lines = fd.lines;
 	f->literals = fd.literals;
 
