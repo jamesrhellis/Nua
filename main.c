@@ -113,7 +113,7 @@ int main(int argn, char **args) {
 			// .rout = func register, and base of func args - 1, base of return vals
 			// .rina = no args, call has to pad with nils
 			// .rinb = no return vals, return has to pad with nils
-			frame_stack_push(&t->func, (frame) {.func = reg[ins.rout].func, .reg_base = &reg[ins.rout] - t->stack.items});
+			frame_stack_push(&t->func, (frame) {.func = reg[ins.rout].func, .reg_base = &reg[ins.rout+1] - t->stack.items});
 			size_t max = t->stack.top + reg[ins.rout].func->def->max_reg;
 
 			if (max >= t->stack.size) {
@@ -127,17 +127,29 @@ int main(int argn, char **args) {
 			top = frame_stack_rpeek(&t->func);
 
 			reg = &t->stack.items[top->reg_base];
+			puts("Reg");
+			print_val(reg[0]);
+			print_val(reg[1]);
+			print_val(reg[2]);
 			lit = top->func->def->literals.items;
-			break;
+			// Avoid skipping the first instruction
+			continue;
 		case OP_RET:
 			// OP is interpreted
 			// .rina = base register
 			// .rout = no values to return
+			puts("OUT");
+			print_val(reg[0]);
+			print_val(reg[1]);
+			print_val(reg[2]);
+
 			frame_stack_pop(&t->func);
 			size_t no_ret = ins.rout;
 
+			reg -= 1;
+
 			for (int i = 0;i < no_ret;++i) {
-				reg[i] = reg[ins.rina + i];
+				reg[i] = reg[ins.rina + i + 1];
 			}
 
 			top = frame_stack_rpeek(&t->func);
@@ -152,6 +164,9 @@ int main(int argn, char **args) {
 
 			break;
 		case OP_ADD:
+			puts("ADD");
+			print_val(reg[3]);
+			print_val(reg[2]);
 			if (reg[ins.rina].type == VAL_NUM
 			&&  reg[ins.rinb].type == VAL_NUM) {
 				reg[ins.rout] = (val) {VAL_NUM, reg[ins.rina].num + reg[ins.rinb].num};
@@ -187,6 +202,7 @@ int main(int argn, char **args) {
 			}
 			break;
 		case OP_MOV:
+			print_val(reg[ins.rina]);
 			reg[ins.rout] = reg[ins.rina];
 			break;
 		case OP_TAB:

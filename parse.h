@@ -713,7 +713,7 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 	}
 	case TOK_BRL:{
 		size_t f_reg = reg;
-		if (reg != f->reg + f->temp) {
+		if (reg != (f->reg + f->temp)) {
 			f_reg = alloc_temp(f);
 		}
 

@@ -3,7 +3,9 @@ i = 21
 
 local j = {1, i, nil}
 
-local k = fun(a, b) ret a + b end
+local k = fun(a, b)
+	ret a + b
+end
 
 if i + 5 > 23 then
 	i = 12
@@ -16,4 +18,4 @@ while i > 23 do
 	i = i - 1
 end
 
-i = k(i ,i)
+i = k(32 ,i)
