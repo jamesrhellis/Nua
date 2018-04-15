@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <ctype.h>
+#include <assert.h>
 #include "gen/rh_hash.h"
 #include "gen/rh_al.h"
 
@@ -345,6 +346,7 @@ size_t alloc_literal(f_data *f, val value) {
 }
 
 size_t alloc_local(f_data *f, char *name) {
+	assert(!f->temp);
 	size_t reg = f->reg++;
 	if (reg > f->max_reg) {
 		f->max_reg = reg;
@@ -619,7 +621,13 @@ static inline int bin_assoc(tokt op) {
 }
 
 int parse_expr(lexer *l, f_data *f, size_t reg) {
-	return parse_bin_expr(l, f, reg, 0);
+	size_t t = alloc_temp(f);
+	size_t err = parse_bin_expr(l, f, t, 0);
+
+	push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = t});
+
+	free_temp(f);
+	return err;
 }
 
 int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence) {

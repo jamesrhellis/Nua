@@ -127,10 +127,6 @@ int main(int argn, char **args) {
 			top = frame_stack_rpeek(&t->func);
 
 			reg = &t->stack.items[top->reg_base];
-			puts("Reg");
-			print_val(reg[0]);
-			print_val(reg[1]);
-			print_val(reg[2]);
 			lit = top->func->def->literals.items;
 			// Avoid skipping the first instruction
 			continue;
@@ -138,11 +134,6 @@ int main(int argn, char **args) {
 			// OP is interpreted
 			// .rina = base register
 			// .rout = no values to return
-			puts("OUT");
-			print_val(reg[0]);
-			print_val(reg[1]);
-			print_val(reg[2]);
-
 			frame_stack_pop(&t->func);
 			size_t no_ret = ins.rout;
 
@@ -164,9 +155,6 @@ int main(int argn, char **args) {
 
 			break;
 		case OP_ADD:
-			puts("ADD");
-			print_val(reg[3]);
-			print_val(reg[2]);
 			if (reg[ins.rina].type == VAL_NUM
 			&&  reg[ins.rinb].type == VAL_NUM) {
 				reg[ins.rout] = (val) {VAL_NUM, reg[ins.rina].num + reg[ins.rinb].num};
@@ -202,7 +190,6 @@ int main(int argn, char **args) {
 			}
 			break;
 		case OP_MOV:
-			print_val(reg[ins.rina]);
 			reg[ins.rout] = reg[ins.rina];
 			break;
 		case OP_TAB:
