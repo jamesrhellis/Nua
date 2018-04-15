@@ -577,19 +577,19 @@ int parse_assign(lexer *l, f_data *f) {
 	return 0;
 }
 
-int emit_bin_code(lexer *l, f_data *f, tokt op, size_t left, size_t right) {
+int emit_bin_code(lexer *l, f_data *f, tokt op, size_t out, size_t left, size_t right) {
 	switch (op) {
 	case TOK_ADD:
-		push_inst(l, f, (inst) {OP_ADD, .rout = left, .rina = left, .rinb =  right});
+		push_inst(l, f, (inst) {OP_ADD, .rout = out, .rina = left, .rinb =  right});
 		break;
 	case TOK_SUB:
-		push_inst(l, f, (inst) {OP_SUB, .rout = left, .rina = left, .rinb =  right});
+		push_inst(l, f, (inst) {OP_SUB, .rout = out, .rina = left, .rinb =  right});
 		break;
 	case TOK_GT:
-		push_inst(l, f, (inst) {OP_GT, .rout = left, .rina = left, .rinb =  right});
+		push_inst(l, f, (inst) {OP_GT, .rout = out, .rina = left, .rinb =  right});
 		break;
 	case TOK_GE:
-		push_inst(l, f, (inst) {OP_GE, .rout = left, .rina = left, .rinb =  right});
+		push_inst(l, f, (inst) {OP_GE, .rout = out, .rina = left, .rinb =  right});
 		break;
 	default:
 		break;
@@ -621,29 +621,28 @@ static inline int bin_assoc(tokt op) {
 }
 
 int parse_expr(lexer *l, f_data *f, size_t reg) {
-	size_t t = alloc_temp(f);
-	size_t err = parse_bin_expr(l, f, t, 0);
-
-	push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = t});
-
-	free_temp(f);
-	return err;
+	return parse_bin_expr(l, f, reg, 0);
 }
 
-int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence) {
+int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
+	size_t left = alloc_temp(f);
 	if (parse_pexpr(l, f, left)) {
 		return 1;
 	}
-	size_t right = alloc_temp(f);
 
+	size_t right = alloc_temp(f);
 	while (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence) {
 		tokt op = l->current.type;
 		lex_next(l);
 
 		parse_bin_expr(l, f, right, bin_prec(op)+bin_assoc(op));
-		emit_bin_code(l, f, op, left, right);
+		emit_bin_code(l, f, op, left, left, right);
 	}
 
+	// Fix the final instruction to output to out
+	inst_list_rpeek(&f->ins)->rout = out;
+
+	free_temp(f);
 	free_temp(f);
 	return 0;
 }
