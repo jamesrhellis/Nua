@@ -675,6 +675,11 @@ int parse_tab(lexer *l, f_data *f, size_t reg) {
 		lex_next(l);
 	}
 
+	if (inst_list_peek(&f->ins).op != OP_TAB) {
+		// Useless mov to allow for a retargetable op at end
+		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = reg});
+	}
+
 	free_temp(f);
 
 	if (l->current.type !=  TOK_TABR) {
