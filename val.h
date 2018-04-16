@@ -100,12 +100,12 @@ int tab_set(tab *t, val k, val v) {
 static inline int tab_push(tab *t, val v) {
 	return val_al_push(&t->al, v);
 }
-typedef enum optype { OPT_N, OPT_RL, OPT_RRR, OPT_O } optype;
-typedef enum opcode  { OP_NOP, OP_SETL, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB,
+typedef enum optype { OPT_N, OPT_RU, OPT_RI, OPT_RRR, OPT_O } optype;
+typedef enum opcode  { OP_NOP, OP_SETL, OP_SETI, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB,
 	OP_GT, OP_GE, OP_MOV, OP_TAB, OP_GTAB, OP_STAB, OP_PTAB, OP_CALL, OP_RET, OPCODE_NO} opcode;
 char *opcode_str[OPCODE_NO] =
-                     {"NOP","SETL","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV", "TAB", "GTAB", "STAB", "PTAB", "CALL", "RET"};
-optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RL, OPT_N, OPT_RL, OPT_O, OPT_RL , OPT_RRR, OPT_RRR, OPT_RRR
+                     {"NOP","SETL","SETI","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV", "TAB", "GTAB", "STAB", "PTAB", "CALL", "RET"};
+optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RU, OPT_RI, OPT_N, OPT_RU, OPT_O, OPT_RU , OPT_RRR, OPT_RRR, OPT_RRR
 	, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
 
 typedef struct inst {
@@ -119,6 +119,10 @@ typedef struct inst {
 			uint8_t rout;
 			uint8_t rina;
 			uint8_t rinb;
+		};
+		struct {
+			uint8_t _reg;
+			int16_t ilit;
 		};
 		struct {
 			int off : 24;
@@ -178,8 +182,11 @@ int print_inst(inst i) {
 	case OPT_N:
 		puts("");
 		break;
-	case OPT_RL:
+	case OPT_RU:
 		printf("%d, %d\n", i.reg, i.lit);
+		break;
+	case OPT_RI:
+		printf("%d, %d\n", i.reg, i.ilit);
 		break;
 	case OPT_RRR:
 		printf("%d, %d, %d\n", i.rout, i.rina, i.rinb);

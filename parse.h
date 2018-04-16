@@ -830,12 +830,18 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		push_inst(l, f, (inst) {OP_NIL, reg, 0});
 		lex_next(l);
 		break;
-	case TOK_NUM:
-		push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
-		val_al_push(&f->literals, (val) {VAL_NUM, l->current.num});
-		lex_next(l);
+	case TOK_NUM:{
+		double n = l->current.num;
+		if (n == floor(n) && n > -32768 && n < 32767) {
+			int16_t i = n;
+			push_inst(l, f, (inst) {OP_SETI, reg, .ilit = i});
+		} else {
+			push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
+			val_al_push(&f->literals, (val) {VAL_NUM, l->current.num});
+		}
+			lex_next(l);
 		break;
-	case TOK_TABL:
+	} case TOK_TABL:
 		if (parse_tab(l, f, reg)) {
 			return 1;
 		}

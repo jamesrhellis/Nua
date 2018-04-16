@@ -92,6 +92,9 @@ int main(int argn, char **args) {
 		case OP_NIL:
 			reg[ins.reg] = (val) {VAL_NIL};
 			break;
+		case OP_SETI:
+			reg[ins.reg] = (val) {VAL_NUM, .num = ins.ilit};
+			break;
 		case OP_SETL:
 			switch (lit[ins.lit].type) {
 			case VAL_TAB:
