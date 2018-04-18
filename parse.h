@@ -383,6 +383,16 @@ void free_temp(f_data *f) {
 	f->temp--;
 }
 
+size_t trans_temp(f_data *f, char *name) {
+	assert(f->temp == 1);
+	free_temp(f);
+	return alloc_local(f, name);
+}
+
+static inline int is_local(f_data *f, uint8_t reg) {
+	return reg < f->reg;
+}
+
 void push_inst(lexer *l, f_data *f, inst i) {
 	inst_list_push(&f->ins, i);
 	inst_lines_push(&f->lines, l->line+1);
@@ -556,11 +566,11 @@ int parse_local(lexer *l, f_data *f) {
 	}
 	lex_next(l);
 
-	reg_al r = {0};
+	ident_al id = {0};
 	if (l->current.type != TOK_IDENT) {
 		return -1;
 	}
-	reg_al_push(&r, alloc_local(f,lex_claim_lexme(l)));
+	ident_al_push(&id, lex_claim_lexme(l));
 	lex_next(l);
 
 	while (l->current.type == TOK_COM) {
@@ -569,7 +579,7 @@ int parse_local(lexer *l, f_data *f) {
 			return -1;
 		}
 
-		reg_al_push(&r, alloc_local(f,lex_claim_lexme(l)));
+		ident_al_push(&id, lex_claim_lexme(l));
 		lex_next(l);
 	}
 
@@ -579,33 +589,41 @@ int parse_local(lexer *l, f_data *f) {
 	}
 	lex_next(l);
 
-	size_t target = 0;
-	if (parse_expr(l, f, r.items[target++])) {
+	size_t t = 0;
+	// Temps are used to avoid data dependency workarounds, to reduce register use
+	size_t reg = alloc_temp(f);;
+	if (parse_expr(l, f, reg)) {
 		return -1;
 	}
+	trans_temp(f, id.items[t++]);
 
 	while (l->current.type == TOK_COM) {
+		reg = alloc_temp(f);
 		lex_next(l);
-		if (target >= r.top || parse_expr(l, f, r.items[target++])) {
+		if (t >= id.top || parse_expr(l, f, reg)) {
 			return -1;
 		}
 		lex_next(l);
+
+		trans_temp(f, id.items[t++]);
 	}
 
-	if (target < r.top) {
+	if (t < id.top) {
 		inst *i = inst_list_rpeek(&f->ins);
 		if (i->op != OP_CALL && (--i)->op != OP_CALL) {
 			return -1;
 		}
-		i->rinb += r.top - target;
-		// First register output is already used
-		size_t reg = i->rout + 1;
-		while (target < r.top) {
-			push_inst(l, f, (inst) {OP_MOV, .rout = r.items[target++], .rina = reg++});
+		i->rinb += id.top - t;
+
+		size_t f_reg = i->rout;
+		while (t < id.top) {
+			reg = alloc_local(f, id.items[t++]);
+			printf("%zu, %zu", reg, f_reg+1);
+			//assert(reg == ++f_reg);
 		}
 	}
 
-	reg_al_free(&r);
+	ident_al_free(&id);
 
 	return 0;
 }
@@ -700,9 +718,15 @@ int parse_expr(lexer *l, f_data *f, size_t reg) {
 }
 
 int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
-	size_t left = alloc_temp(f);
+	size_t left = out;
+	if (is_local(f, out)) {
+		left = alloc_temp(f);
+	}
+
 	if (parse_pexpr(l, f, left)) {
-		free_temp(f);
+		if (is_local(f, out)) {
+			free_temp(f);
+		}
 		return 1;
 	}
 
@@ -715,11 +739,14 @@ int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 		emit_bin_code(l, f, op, left, left, right);
 	}
 
+	free_temp(f);
+	if (is_local(f, out)) {
+		free_temp(f);
+	}
+
 	// Fix the final instruction to output to out
 	inst_list_rpeek(&f->ins)->rout = out;
 
-	free_temp(f);
-	free_temp(f);
 	return 0;
 }
 
@@ -801,7 +828,8 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 	}
 	case TOK_BRL:{
 		size_t f_reg = reg;
-		if (reg < (f->reg + f->temp)) {
+		// func cannot be called from any reg other than the top - args needed
+		if (reg < (f->reg + f->temp) - 1) {
 			f_reg = alloc_temp(f);
 		}
 
