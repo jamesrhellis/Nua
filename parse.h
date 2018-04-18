@@ -347,6 +347,7 @@ size_t alloc_literal(f_data *f, val value) {
 
 size_t alloc_local(f_data *f, char *name) {
 	assert(!f->temp);
+
 	size_t reg = f->reg++;
 	if (reg > f->max_reg) {
 		f->max_reg = reg;
@@ -530,24 +531,81 @@ int parse_ret(lexer *l, f_data *f) {
 	return 0;
 }
 
-
+RH_AL_MAKE(reg_al, uint8_t)
 
 int parse_local(lexer *l, f_data *f) {
 	if (l->current.type != TOK_LOCAL) {
 		return 1;
 	}
 	lex_next(l);
+
+	reg_al r = {0};
 	if (l->current.type != TOK_IDENT) {
 		return -1;
 	}
-	alloc_local(f, l->current.lexme);
+	reg_al_push(&r, alloc_local(f, l->current.lexme));
+	lex_next(l);
 
-	if (parse_assign(l, f)) {
+	while (l->current.type == TOK_COM) {
+		lex_next(l);
+		if (l->current.type != TOK_IDENT) {
+			return -1;
+		}
+
+		reg_al_push(&r, alloc_local(f, l->current.lexme));
+		lex_next(l);
+	}
+
+	if (l->current.type != TOK_ASSIGN) {
+		printf("Error no assignment\n");
+		return -1;
+	}
+	lex_next(l);
+
+	size_t target = 0;
+	if (parse_expr(l, f, r.items[target++])) {
 		return -1;
 	}
 
+	while (l->current.type == TOK_COM) {
+		lex_next(l);
+		if (target >= r.top || parse_expr(l, f, r.items[target++])) {
+			return -1;
+		}
+		lex_next(l);
+	}
+
+	if (target < r.top) {
+		inst *i = inst_list_rpeek(&f->ins);
+		if (i->op != OP_CALL && (--i)->op != OP_CALL) {
+			return -1;
+		}
+		i->rinb += r.top - target;
+		// First register output is already used
+		size_t reg = i->rout + 1;
+		while (target < r.top) {
+			push_inst(l, f, (inst) {OP_MOV, .rout = r.items[target++], .rina = reg++});
+		}
+	}
+
+	reg_al_free(&r);
+
 	return 0;
 }
+
+enum ass_type { ASS_ERR, ASS_LOCAL, ASS_GLOB, ASS_TAB };
+typedef struct assign {
+	uint8_t type;
+	union {
+		uint8_t rout;
+		uint8_t rname;
+		struct {
+			uint8_t rtab;
+			uint8_t rkey;
+		};
+	};
+} assign;
+RH_AL_MAKE(ass_al, assign)
 
 int parse_assign(lexer *l, f_data *f) {
 	if (l->current.type != TOK_IDENT) {
@@ -640,7 +698,9 @@ int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 	}
 
 	// Fix the final instruction to output to out
-	inst_list_rpeek(&f->ins)->rout = out;
+	if (!precedence) {
+		inst_list_rpeek(&f->ins)->rout = out;
+	}
 
 	free_temp(f);
 	free_temp(f);
@@ -818,7 +878,7 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	func *fun = calloc(sizeof(*fun), 1);
 	*fun = (func) { FUNC_NUA, .def = fun_def};
 
-	push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
+	push_inst(l, f, (inst) { OP_SETL, reg, f->literals.top });
 	alloc_literal(f, (val) { VAL_FUNC, .func = fun });
 
 	return 0;
