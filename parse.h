@@ -276,8 +276,23 @@ token __lex_next(lexer *l) {
 }
 
 int lex_next(lexer *l) {
+	switch (l->current.type) {
+	case TOK_IDENT:
+	case TOK_STR:
+		free(l->current.lexme);
+		break;
+	default:
+		break;
+	}
+
 	l->current = __lex_next(l);
 	return l->current.type != TOK_EOI;
+}
+
+char *lex_claim_lexme(lexer *l) {
+	char *lex = l->current.lexme;
+	l->current.lexme = NULL;
+	return lex;
 }
 
 RH_HASH_MAKE(ident_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
@@ -526,12 +541,14 @@ int parse_ret(lexer *l, f_data *f) {
 	}
 
 	push_inst(l, f, (inst) {OP_RET, .rout = 1, .rina = t});
+
 	free_temp(f);
 
 	return 0;
 }
 
 RH_AL_MAKE(reg_al, uint8_t)
+RH_AL_MAKE(ident_al, char *)
 
 int parse_local(lexer *l, f_data *f) {
 	if (l->current.type != TOK_LOCAL) {
@@ -543,7 +560,7 @@ int parse_local(lexer *l, f_data *f) {
 	if (l->current.type != TOK_IDENT) {
 		return -1;
 	}
-	reg_al_push(&r, alloc_local(f, l->current.lexme));
+	reg_al_push(&r, alloc_local(f,lex_claim_lexme(l)));
 	lex_next(l);
 
 	while (l->current.type == TOK_COM) {
@@ -552,7 +569,7 @@ int parse_local(lexer *l, f_data *f) {
 			return -1;
 		}
 
-		reg_al_push(&r, alloc_local(f, l->current.lexme));
+		reg_al_push(&r, alloc_local(f,lex_claim_lexme(l)));
 		lex_next(l);
 	}
 
@@ -685,6 +702,7 @@ int parse_expr(lexer *l, f_data *f, size_t reg) {
 int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 	size_t left = alloc_temp(f);
 	if (parse_pexpr(l, f, left)) {
+		free_temp(f);
 		return 1;
 	}
 
@@ -698,9 +716,7 @@ int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 	}
 
 	// Fix the final instruction to output to out
-	if (!precedence) {
-		inst_list_rpeek(&f->ins)->rout = out;
-	}
+	inst_list_rpeek(&f->ins)->rout = out;
 
 	free_temp(f);
 	free_temp(f);
@@ -775,7 +791,7 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 		}
 
 		push_inst(l, f, (inst) {OP_SETL, temp, f->literals.top});
-		val_al_push(&f->literals, (val) {VAL_STR, .str = l->current.lexme});
+		val_al_push(&f->literals, (val) {VAL_STR, .str = lex_claim_lexme(l)});
 
 		push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = reg, .rinb = temp});
 
@@ -785,7 +801,7 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 	}
 	case TOK_BRL:{
 		size_t f_reg = reg;
-		if (reg != (f->reg + f->temp)) {
+		if (reg < (f->reg + f->temp)) {
 			f_reg = alloc_temp(f);
 		}
 
@@ -842,7 +858,7 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	size_t no_args = 0;
 	while (l->current.type == TOK_IDENT) {
 		++no_args;
-		alloc_local(&fd, l->current.lexme);
+		alloc_local(&fd, lex_claim_lexme(l));
 		lex_next(l);
 
 		if (l->current.type == TOK_COM) {
