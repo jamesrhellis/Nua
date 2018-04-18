@@ -745,7 +745,11 @@ int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 	}
 
 	// Fix the final instruction to output to out
-	inst_list_rpeek(&f->ins)->rout = out;
+	if (inst_list_rpeek(&f->ins)->op != OP_CALL) {
+		inst_list_rpeek(&f->ins)->rout = out;
+	} else {
+		push_inst(l, f, (inst) {OP_MOV, .rout = out, .rina = inst_list_rpeek(&f->ins)->rout});
+	}
 
 	return 0;
 }
