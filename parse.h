@@ -419,6 +419,8 @@ int parse(lexer l, func_def *f) {
 	}
 	rem_scope(&fd);
 
+	free(fd.scopes.items);
+
 	push_inst(&l, &fd, (inst) {OP_END});
 	f->ins = fd.ins;
 	f->max_reg = fd.max_reg;
@@ -922,6 +924,8 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 		return err;
 	}
 	rem_scope(&fd);
+
+	free(fd.scopes.items);
 
 	if (l->current.type != TOK_END) {
 		return -1;

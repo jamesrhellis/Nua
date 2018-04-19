@@ -233,6 +233,8 @@ int main(int argn, char **args) {
 
 			printf("Register 1; ");
 			print_val(reg[1]);
+
+			free((void *) file);
 			return 0;
 		default:
 			break;
