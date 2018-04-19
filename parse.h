@@ -550,9 +550,21 @@ int parse_ret(lexer *l, f_data *f) {
 		return err;
 	}
 
-	push_inst(l, f, (inst) {OP_RET, .rout = 1, .rina = t});
+	size_t no_ret = 1;
+	while (l->current.type == TOK_COM) {
+		lex_next(l);
+		if (parse_expr(l, f, alloc_temp(f))) {
+			return -1;
+		}
 
-	free_temp(f);
+		++no_ret;
+	}
+
+	push_inst(l, f, (inst) {OP_RET, .rout = no_ret, .rina = t});
+
+	for (int i = 0;i < no_ret;++i) {
+		free_temp(f);
+	}
 
 	return 0;
 }
@@ -955,6 +967,7 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		}
 		break;
 	case TOK_IDENT:{
+		printf("%s\n", l->current.lexme);
 		size_t *local = find_local(f, l->current.lexme);
 		if (!local) {
 			// FIXME remove later in dev once globals and uptable added
