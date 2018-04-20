@@ -398,6 +398,11 @@ void push_inst(lexer *l, f_data *f, inst i) {
 	inst_lines_push(&f->lines, l->line+1);
 }
 
+inst pop_inst(lexer *l, f_data *f) {
+	return inst_list_pop(&f->ins);
+}
+
+
 int parse_code(lexer *l, f_data *f);
 int parse_local(lexer *l, f_data *f);
 int parse_assign(lexer *l, f_data *f);
@@ -582,6 +587,7 @@ int parse_local(lexer *l, f_data *f) {
 
 	ident_al id = {0};
 	if (l->current.type != TOK_IDENT) {
+		printf("No identifier after local\n");
 		return -1;
 	}
 	ident_al_push(&id, lex_claim_lexme(l));
@@ -590,6 +596,7 @@ int parse_local(lexer *l, f_data *f) {
 	while (l->current.type == TOK_COM) {
 		lex_next(l);
 		if (l->current.type != TOK_IDENT) {
+			printf("No identifier after comma \n");
 			return -1;
 		}
 
@@ -607,6 +614,7 @@ int parse_local(lexer *l, f_data *f) {
 	// Temps are used to avoid data dependency workarounds, to reduce register use
 	size_t reg = alloc_temp(f);;
 	if (parse_expr(l, f, reg)) {
+		printf("No expression after local\n");
 		return -1;
 	}
 	trans_temp(f, id.items[t++]);
@@ -614,10 +622,16 @@ int parse_local(lexer *l, f_data *f) {
 	while (l->current.type == TOK_COM) {
 		reg = alloc_temp(f);
 		lex_next(l);
-		if (t >= id.top || parse_expr(l, f, reg)) {
+
+		if (t >= id.top) {
+			printf("Excess of expressions after local; %zu\n", t);
+			puts(l->current.lexme);
 			return -1;
 		}
-		lex_next(l);
+		if (parse_expr(l, f, reg)) {
+			printf("Unable to parse expression after local\n");
+			return -1;
+		}
 
 		trans_temp(f, id.items[t++]);
 	}
@@ -625,6 +639,7 @@ int parse_local(lexer *l, f_data *f) {
 	if (t < id.top) {
 		inst *i = inst_list_rpeek(&f->ins);
 		if (i->op != OP_CALL && (--i)->op != OP_CALL) {
+			printf("Lack of expressions after local\n");
 			return -1;
 		}
 		i->rinb += id.top - t;
@@ -632,7 +647,6 @@ int parse_local(lexer *l, f_data *f) {
 		size_t f_reg = i->rout;
 		while (t < id.top) {
 			reg = alloc_local(f, id.items[t++]);
-			printf("%zu, %zu", reg, f_reg+1);
 			//assert(reg == ++f_reg);
 		}
 	}
@@ -661,24 +675,117 @@ int parse_assign(lexer *l, f_data *f) {
 		return 1;
 	}
 
-	size_t *local = find_local(f, l->current.lexme);
-	if (!local) {
-		// FIXME remove later in dev once globals and uptable added
-		printf("Error in local map\n");
+	ass_al a = {0};
+	// True register doesn't matter, as the output register is not used
+	size_t reg = 0;
+	while (l->current.type == TOK_IDENT) {
+		if (parse_pexpr(l, f, reg)) {
+			break;
+		}
+
+		inst i = pop_inst(l, f);
+		switch (i.op) {
+		case OP_MOV:
+			ass_al_push(&a, (assign) {ASS_LOCAL, i.rina});
+			break;
+		case OP_GTAB:
+			// Key, Value and tab
+			if (!is_local(f, i.rina)) {
+				alloc_temp(f);
+			}
+			if (!is_local(f, i.rout)) {
+				alloc_temp(f);
+			}
+			ass_al_push(&a, (assign) {ASS_TAB, .rtab = i.rout, .rkey = i.rina});
+			break;
+		default:
+			printf("Error non-assignable primary expression in assignment\n");
+			return -1;
+		}
+
+		if (l->current.type == TOK_COM) {
+			lex_next(l);
+		}
+	}
+
+	if (!a.items) {
+		printf("Error targets to assign\n");
 		return -1;
 	}
-	size_t reg = *local;
 
-	lex_next(l);
 	if (l->current.type != TOK_ASSIGN) {
 		printf("Error no assignment\n");
 		return -1;
 	}
-
 	lex_next(l);
+
+	size_t t = 0;
+	// Temps are used to avoid data dependency workarounds, to reduce register use
+	if (a.items[t].type == ASS_LOCAL)
+		reg = a.items[t].rout;
+	else
+		reg = alloc_temp(f);
+
 	if (parse_expr(l, f, reg)) {
-		printf("Unable to parse expr\n");
+		printf("Error no rexpression\n");
 		return -1;
+	}
+
+	assign as = a.items[t++];
+	switch (as.type) {
+	case ASS_TAB:
+		push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rout = reg});
+		break;
+	default:
+		break;
+	}
+
+	while (l->current.type == TOK_COM) {
+		if (a.items[t].type == ASS_LOCAL)
+			reg = a.items[t].rout;
+		else
+			reg = alloc_temp(f);
+
+		lex_next(l);
+		if (t >= a.top || parse_expr(l, f, reg)) {
+			printf("Excess no of expressions\n");
+			return -1;
+		}
+
+	}
+
+	if (t < a.top) {
+		inst *i = inst_list_rpeek(&f->ins);
+		if (i->op != OP_CALL && (--i)->op != OP_CALL) {
+			return -1;
+		}
+		i->rinb += a.top - t;
+
+		size_t f_reg = i->rout;
+		while (t < a.top) {
+			assign as = a.items[t++];
+			switch (as.type) {
+			case ASS_TAB:
+				push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rout = f_reg});
+				break;
+			default:
+				push_inst(l, f, (inst) { OP_MOV, .rout = as.rout, .rina = f_reg});
+				break;
+			}
+		}
+	}
+
+	// Free all temps used for tab indexing
+	for (int i = 0;i < a.top;++i) {
+		assign as = a.items[i];
+		if (as.type == ASS_TAB) {
+			if (!is_local(f, as.rkey)) {
+				free_temp(f);
+			}
+			if (!is_local(f, as.rtab)) {
+				free_temp(f);
+			}
+		}
 	}
 
 	return 0;
@@ -971,7 +1078,6 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		}
 		break;
 	case TOK_IDENT:{
-		printf("%s\n", l->current.lexme);
 		size_t *local = find_local(f, l->current.lexme);
 		if (!local) {
 			// FIXME remove later in dev once globals and uptable added
