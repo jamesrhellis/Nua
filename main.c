@@ -14,7 +14,7 @@
 typedef struct frame {
 	size_t reg_base;
 	size_t ins;
-	tab *global;
+	tab *env;
 
 	func *func;
 } frame;
@@ -63,11 +63,12 @@ int main(int argn, char **args) {
 	}
 
 	print_func_def(*base->def);
-	print_literals(*base->def);
 
 	global g = {0}; {
 		thread t = {.stack = val_al_new(256), .func = frame_stack_new(8)};
-		frame_stack_push(&t.func, (frame) {.func = base});
+		tab *env = gc_alloc(&g.gc_list, sizeof(tab));
+		tab_set(env, (val){VAL_NUM, .num = 0}, (val){VAL_TAB, .tab = env});
+		frame_stack_push(&t.func, (frame) {.func = base, .env = env});
 
 		thread_list_push(&g.threads, t);
 	}
@@ -77,6 +78,7 @@ int main(int argn, char **args) {
 
 	val *reg = &t->stack.items[top->reg_base];
 	val *lit = top->func->def->literals.items;
+	tab *env = top->env;
 
 	while (true) {
 		inst ins = top->func->def->ins.items[top->ins];
@@ -131,6 +133,12 @@ int main(int argn, char **args) {
 
 			reg = &t->stack.items[top->reg_base];
 			lit = top->func->def->literals.items;
+			if (top->func->env) {
+				env = top->env = top->func->env;
+			} else {
+				env = (top-1)->env;
+			}
+
 			// Avoid skipping the first instruction
 			continue;
 		case OP_RET:
@@ -155,6 +163,8 @@ int main(int argn, char **args) {
 			for (int i = no_ret;i < ins.rinb;++i) {
 				reg[ins.rout + i] = (val) { VAL_NIL };
 			}
+
+			env = top->env;
 
 			break;
 		case OP_ADD:
@@ -227,6 +237,12 @@ int main(int argn, char **args) {
 			default:
 				break;
 			}
+			break;
+		case OP_SENV:
+			tab_set(env, reg[ins.rina], reg[ins.rinb]);
+			break;
+		case OP_GENV:
+			reg[ins.rout] = tab_get(env, reg[ins.rina]);
 			break;
 		case OP_END:
 			printf("Register 0; ");

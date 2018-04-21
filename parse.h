@@ -659,12 +659,12 @@ int parse_local(lexer *l, f_data *f) {
 	return 0;
 }
 
-enum ass_type { ASS_ERR, ASS_LOCAL, ASS_GLOB, ASS_TAB };
+enum ass_type { ASS_ERR, ASS_LOCAL, ASS_ENV, ASS_TAB };
 typedef struct assign {
 	uint8_t type;
 	union {
 		uint8_t rout;
-		uint8_t rname;
+		uint8_t renv;
 		struct {
 			uint8_t rtab;
 			uint8_t rkey;
@@ -673,6 +673,7 @@ typedef struct assign {
 } assign;
 RH_AL_MAKE(ass_al, assign)
 
+			void print_inst(inst i);
 int parse_assign(lexer *l, f_data *f) {
 	if (l->current.type != TOK_IDENT) {
 		return 1;
@@ -690,6 +691,12 @@ int parse_assign(lexer *l, f_data *f) {
 		case OP_MOV:
 			ass_al_push(&a, (assign) {ASS_LOCAL, i.rina});
 			break;
+		case OP_GENV:
+			if (!is_local(f, i.rina)) {
+				reg = alloc_temp(f);
+			}
+			ass_al_push(&a, (assign) {ASS_ENV, .renv = i.rina});
+			break;
 		case OP_GTAB:
 			// Key, Value and tab
 			if (!is_local(f, i.rinb)) {
@@ -702,6 +709,7 @@ int parse_assign(lexer *l, f_data *f) {
 			break;
 		default:
 			printf("Error non-assignable primary expression in assignment\n");
+			print_inst(i);
 			return -1;
 		}
 
@@ -762,6 +770,12 @@ int parse_assign(lexer *l, f_data *f) {
 		free_temp(f);
 
 		switch (as.type) {
+		case ASS_ENV:
+			if (!is_local(f, as.renv)) {
+				free_temp(f);
+			}
+			push_inst(l, f, (inst) {OP_SENV, .rina = as.renv , .rinb = f_reg++});
+			break;
 		case ASS_TAB:
 			if (!is_local(f, as.rkey)) {
 				free_temp(f);
@@ -1085,13 +1099,13 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		break;
 	case TOK_IDENT:{
 		size_t *local = find_local(f, l->current.lexme);
-		if (!local) {
-			// FIXME remove later in dev once globals and uptable added
-			puts(l->current.lexme);
-			printf("Error unable to find local!\n");
-			return -1;
+		if (local) {
+			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local});
+		} else {
+			push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
+			val_al_push(&f->literals, (val) {VAL_STR, .str=lex_claim_lexme(l)});
+			push_inst(l, f, (inst) {OP_GENV, .rout = reg, .rina = reg});
 		}
-		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local});
 		lex_next(l);
 		break;
 	} case TOK_FUN:{

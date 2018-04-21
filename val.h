@@ -102,11 +102,11 @@ static inline int tab_push(tab *t, val v) {
 }
 typedef enum optype { OPT_N, OPT_RU, OPT_RI, OPT_RRR, OPT_O } optype;
 typedef enum opcode  { OP_NOP, OP_SETL, OP_SETI, OP_END, OP_COVER, OP_JMP, OP_NIL, OP_ADD, OP_SUB,
-	OP_GT, OP_GE, OP_MOV, OP_TAB, OP_GTAB, OP_STAB, OP_PTAB, OP_CALL, OP_RET, OPCODE_NO} opcode;
+	OP_GT, OP_GE, OP_MOV, OP_TAB, OP_GTAB, OP_STAB, OP_PTAB, OP_CALL, OP_RET, OP_SENV, OP_GENV, OPCODE_NO} opcode;
 char *opcode_str[OPCODE_NO] =
-                     {"NOP","SETL","SETI","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV", "TAB", "GTAB", "STAB", "PTAB", "CALL", "RET"};
+                     {"NOP","SETL","SETI","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV", "TAB", "GTAB", "STAB", "PTAB", "CALL", "RET", "SENV", "GENV"};
 optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RU, OPT_RI, OPT_N, OPT_RU, OPT_O, OPT_RU , OPT_RRR, OPT_RRR, OPT_RRR
-	, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
+	, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
 
 typedef struct inst {
 	uint8_t op;
@@ -157,6 +157,8 @@ typedef struct func {
 	union {
 		struct {
 			val_al upvals;
+			tab *env;
+
 			func_def *def;
 		};
 		struct {
