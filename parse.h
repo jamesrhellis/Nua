@@ -676,8 +676,7 @@ int parse_assign(lexer *l, f_data *f) {
 	}
 
 	ass_al a = {0};
-	// True register doesn't matter, as the output register is not used
-	size_t reg = 0;
+	size_t reg = alloc_temp(f);
 	while (l->current.type == TOK_IDENT) {
 		if (parse_pexpr(l, f, reg)) {
 			break;
@@ -690,13 +689,13 @@ int parse_assign(lexer *l, f_data *f) {
 			break;
 		case OP_GTAB:
 			// Key, Value and tab
+			if (!is_local(f, i.rinb)) {
+				alloc_temp(f);
+			}
 			if (!is_local(f, i.rina)) {
-				alloc_temp(f);
+				reg = alloc_temp(f);
 			}
-			if (!is_local(f, i.rout)) {
-				alloc_temp(f);
-			}
-			ass_al_push(&a, (assign) {ASS_TAB, .rtab = i.rout, .rkey = i.rina});
+			ass_al_push(&a, (assign) {ASS_TAB, .rtab = i.rina, .rkey = i.rinb});
 			break;
 		default:
 			printf("Error non-assignable primary expression in assignment\n");
@@ -709,7 +708,7 @@ int parse_assign(lexer *l, f_data *f) {
 	}
 
 	if (!a.items) {
-		printf("Error targets to assign\n");
+		printf("Error no targets to assign\n");
 		return -1;
 	}
 
@@ -720,11 +719,6 @@ int parse_assign(lexer *l, f_data *f) {
 	lex_next(l);
 
 	size_t t = 0;
-	// Temps are used to avoid data dependency workarounds, to reduce register use
-	if (a.items[t].type == ASS_LOCAL)
-		reg = a.items[t].rout;
-	else
-		reg = alloc_temp(f);
 
 	if (parse_expr(l, f, reg)) {
 		printf("Error no rexpression\n");
@@ -734,29 +728,38 @@ int parse_assign(lexer *l, f_data *f) {
 	assign as = a.items[t++];
 	switch (as.type) {
 	case ASS_TAB:
-		push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rout = reg});
+		push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rinb = reg});
 		break;
 	default:
+		// Fix the final instruction to output to out
+		if (inst_list_rpeek(&f->ins)->op != OP_CALL) {
+			inst_list_rpeek(&f->ins)->rout = as.rout;
+		} else {
+			push_inst(l, f, (inst) {OP_MOV, .rout = as.rout, .rina = inst_list_rpeek(&f->ins)->rout});
+		}
 		break;
 	}
 
 	while (l->current.type == TOK_COM) {
-		if (a.items[t].type == ASS_LOCAL)
-			reg = a.items[t].rout;
-		else
-			reg = alloc_temp(f);
-
 		lex_next(l);
 		if (t >= a.top || parse_expr(l, f, reg)) {
 			printf("Excess no of expressions\n");
 			return -1;
 		}
 
+		// Fix the final instruction to output to out
+		if (inst_list_rpeek(&f->ins)->op != OP_CALL) {
+			inst_list_rpeek(&f->ins)->rout = as.rout;
+		} else {
+			push_inst(l, f, (inst) {OP_MOV, .rout = as.rout, .rina = inst_list_rpeek(&f->ins)->rout});
+		}
+
 	}
 
 	if (t < a.top) {
-		inst *i = inst_list_rpeek(&f->ins);
+		inst *i = inst_list_rpeek(&f->ins) - 1;
 		if (i->op != OP_CALL && (--i)->op != OP_CALL) {
+			printf("Lack of values to assign \n");
 			return -1;
 		}
 		i->rinb += a.top - t;
@@ -766,14 +769,16 @@ int parse_assign(lexer *l, f_data *f) {
 			assign as = a.items[t++];
 			switch (as.type) {
 			case ASS_TAB:
-				push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rout = f_reg});
+				push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rinb = ++f_reg});
 				break;
 			default:
-				push_inst(l, f, (inst) { OP_MOV, .rout = as.rout, .rina = f_reg});
+				push_inst(l, f, (inst) { OP_MOV, .rout = as.rout, .rina = ++f_reg});
 				break;
 			}
 		}
 	}
+
+	free_temp(f);
 
 	// Free all temps used for tab indexing
 	for (int i = 0;i < a.top;++i) {
@@ -928,11 +933,11 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 		if (l->current.type != TOK_INDR) {
 			return -1;
 		}
+		lex_next(l);
 
 		push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = reg, .rinb = temp});
 
 		free_temp(f);
-		lex_next(l);
 		break;
 	}
 	case TOK_DOT:{
@@ -1070,10 +1075,11 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 			push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
 			val_al_push(&f->literals, (val) {VAL_NUM, l->current.num});
 		}
-			lex_next(l);
+		lex_next(l);
 		break;
 	} case TOK_TABL:
 		if (parse_tab(l, f, reg)) {
+			printf("Error unable parse tab\n");
 			return 1;
 		}
 		break;
@@ -1084,7 +1090,7 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 			printf("Error unable to find local!\n");
 			return -1;
 		}
-		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local, .rinb = *local});
+		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local});
 		lex_next(l);
 		break;
 	} case TOK_FUN:{

@@ -25,11 +25,11 @@ static inline uint64_t val_hash(const val v) {
 	case VAL_NUM:
 		hash = *((uint64_t *)&(v.num));
 	case VAL_TAB:
-		hash = *((uintptr_t *)(v.tab));
+		hash = ((uintptr_t)(v.tab));
 	case VAL_STR:
-		hash = *((uintptr_t *)(v.str));
+		hash = ((uintptr_t)(v.str));
 	case VAL_FUNC:
-		hash = *((uintptr_t *)(v.func));
+		hash = ((uintptr_t)(v.func));
 	default:
 		break;
 	}
@@ -93,7 +93,7 @@ int tab_set(tab *t, val k, val v) {
 		}
 	}
 
-	val_ht_set(&t->ht, v, k);
+	val_ht_set(&t->ht, k, v);
 	return 0;
 }
 

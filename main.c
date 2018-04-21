@@ -215,6 +215,7 @@ int main(int argn, char **args) {
 				tab_set(reg[ins.rout].tab, reg[ins.rina], reg[ins.rinb]);
 				break;
 			default:
+				print_val(reg[ins.rout]);
 				break;
 			}
 			break;
