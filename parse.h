@@ -167,8 +167,8 @@ int parse_init(void) {
 	sident_map_set(&sidents, "end", TOK_END);
 	sident_map_set(&sidents, "while", TOK_WHILE);
 	sident_map_set(&sidents, "do", TOK_DO);
-	sident_map_set(&sidents, "fun", TOK_FUN);
-	sident_map_set(&sidents, "ret", TOK_RET);
+	sident_map_set(&sidents, "function", TOK_FUN);
+	sident_map_set(&sidents, "return", TOK_RET);
 	sident_map_set(&sidents, "nil", TOK_NIL);
 	return 0;
 }
@@ -778,6 +778,20 @@ int parse_assign(lexer *l, f_data *f) {
 }
 
 int emit_bin_code(lexer *l, f_data *f, tokt op, size_t out, size_t left, size_t right) {
+	inst *i = inst_list_rpeek(&f->ins);
+	if (i->op == OP_MOV) {
+		if (i->rout == right) {
+			right = i->rina;
+			pop_inst(l, f);
+		}
+		if ((--i)->op == OP_MOV) {
+			if (i->rout == left) {
+				left = i->rina;
+				pop_inst(l, f);
+			}
+		}
+	}
+
 	switch (op) {
 	case TOK_ADD:
 		push_inst(l, f, (inst) {OP_ADD, .rout = out, .rina = left, .rinb =  right});
