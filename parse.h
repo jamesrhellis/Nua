@@ -62,7 +62,8 @@ typedef enum tokt {
 	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_FUN, TOK_RET, TOK_NIL,
 	// Special symbols
 	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_TABL, TOK_TABR,
-	TOK_INDL, TOK_INDR, TOK_BRL, TOK_BRR, TOK_COM, TOK_DOT} tokt;
+	TOK_INDL, TOK_INDR, TOK_BRL, TOK_BRR, TOK_COM, TOK_DOT
+} tokt;
 
 typedef struct {
 	tokt type;
@@ -80,6 +81,7 @@ typedef struct {
 } token;
 
 typedef struct {
+	const char *file;
 	const char *pos;
 	size_t line;
 	token current;
@@ -315,7 +317,7 @@ typedef struct {
 } f_data;
 
 int add_scope(f_data *f) {
-	scope_al_push(&f->scopes, (ident_map) {0});
+	return scope_al_push(&f->scopes, (ident_map) {0});
 }
 
 int rem_scope(f_data *f) {
@@ -431,6 +433,7 @@ int parse(lexer l, func_def *f) {
 	f->max_reg = fd.max_reg;
 	f->lines = fd.lines;
 	f->literals = fd.literals;
+	f->file = l.file;
 
 	return 0;
 }
@@ -1046,6 +1049,8 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	fun_def->lines = fd.lines;
 	fun_def->literals = fd.literals;
 
+	fun_def->file = l->file;
+
 	func *fun = calloc(sizeof(*fun), 1);
 	*fun = (func) { FUNC_NUA, .def = fun_def};
 
@@ -1096,7 +1101,7 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 	} default:
 		return 1;
 	}
-	parse_cont(l, f, reg);
+	return parse_cont(l, f, reg);
 }
 
 #endif

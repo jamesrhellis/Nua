@@ -55,9 +55,9 @@ int main(int argn, char **args) {
 	parse_init();
 
 	func *base = calloc(sizeof(*base), 1);
-	*base = (func) { FUNC_NUA, .def = calloc(sizeof(*base->def), 1) };
+	*base = (func) { FUNC_NUA, .def = calloc(sizeof(*base->def), 1)};
 
-	if (parse((lexer){file}, base->def)) {
+	if (parse((lexer){args[1], file}, base->def)) {
 		fprintf(stderr, "Unable to parse file!");
 		return 1;
 	}

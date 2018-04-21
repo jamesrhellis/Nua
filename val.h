@@ -146,7 +146,7 @@ typedef struct func_def {
 	val_al literals;
 
 	// Debug data
-	char *file;
+	const char *file;
 	inst_lines lines;
 } func_def;
 
@@ -169,6 +169,7 @@ typedef struct func {
 int print_val(val v);
 
 int print_literals(func_def f) {
+	printf("literals for function from %d\n", f.lines.items[0]);
 	for (size_t i = 0;i < f.literals.top;++i) {
 		printf("%zu| %s; ", i, val_type_str[f.literals.items[i].type]);
 		print_val(f.literals.items[i]);
@@ -176,8 +177,8 @@ int print_literals(func_def f) {
 	return 0;
 }
 
-int print_inst(inst i) {
-	printf("%s; ", opcode_str[i.op]);
+void print_inst(inst i) {
+	printf("%s;\t\b\b\b", opcode_str[i.op]);
 	switch (opcode_type[i.op]) {
 	case OPT_N:
 		puts("");
@@ -198,10 +199,12 @@ int print_inst(inst i) {
 }
 
 int print_func_def(func_def f) {
+	printf("Function def; %s, lines %d, %d\n", f.file, f.lines.items[0], inst_lines_peek(&f.lines));
 	for (size_t i = 0;i < f.ins.top;++i) {
-		printf("%d| %s; ", f.lines.items[i], opcode_str[f.ins.items[i].op]);
+		printf("%zu\t\b\b\b%d |\t\b\b\b", i, f.lines.items[i]);
 		print_inst(f.ins.items[i]);
 	}
+	print_literals(f);
 	return 0;
 }
 
@@ -216,7 +219,6 @@ int print_val(val v) {
 			puts("FUNC_NUA:");
 			puts("{");
 			print_func_def(*v.func->def);
-			print_literals(*v.func->def);
 			puts("}");
 			break;
 		case FUNC_C:
