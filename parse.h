@@ -718,42 +718,22 @@ int parse_assign(lexer *l, f_data *f) {
 	}
 	lex_next(l);
 
-	size_t t = 0;
+	size_t t = 1;
+	size_t reg_base = reg;
 
 	if (parse_expr(l, f, reg)) {
 		printf("Error no rexpression\n");
 		return -1;
 	}
 
-	assign as = a.items[t++];
-	switch (as.type) {
-	case ASS_TAB:
-		push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rinb = reg});
-		break;
-	default:
-		// Fix the final instruction to output to out
-		if (inst_list_rpeek(&f->ins)->op != OP_CALL) {
-			inst_list_rpeek(&f->ins)->rout = as.rout;
-		} else {
-			push_inst(l, f, (inst) {OP_MOV, .rout = as.rout, .rina = inst_list_rpeek(&f->ins)->rout});
-		}
-		break;
-	}
-
 	while (l->current.type == TOK_COM) {
+		reg = alloc_temp(f);
+
 		lex_next(l);
-		if (t >= a.top || parse_expr(l, f, reg)) {
+		if (t++ >= a.top || parse_expr(l, f, reg)) {
 			printf("Excess no of expressions\n");
 			return -1;
 		}
-
-		// Fix the final instruction to output to out
-		if (inst_list_rpeek(&f->ins)->op != OP_CALL) {
-			inst_list_rpeek(&f->ins)->rout = as.rout;
-		} else {
-			push_inst(l, f, (inst) {OP_MOV, .rout = as.rout, .rina = inst_list_rpeek(&f->ins)->rout});
-		}
-
 	}
 
 	if (t < a.top) {
@@ -762,34 +742,35 @@ int parse_assign(lexer *l, f_data *f) {
 			printf("Lack of values to assign \n");
 			return -1;
 		}
-		i->rinb += a.top - t;
 
-		size_t f_reg = i->rout;
-		while (t < a.top) {
-			assign as = a.items[t++];
-			switch (as.type) {
-			case ASS_TAB:
-				push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rinb = ++f_reg});
-				break;
-			default:
-				push_inst(l, f, (inst) { OP_MOV, .rout = as.rout, .rina = ++f_reg});
-				break;
-			}
+		i->rinb += a.top - t;
+		// Un-needed allocation to simplify code at end
+		for (int j = 1;j < i->rinb;++j) {
+			alloc_temp(f);
 		}
 	}
 
-	free_temp(f);
-
 	// Free all temps used for tab indexing
+	size_t f_reg = reg_base;
 	for (int i = 0;i < a.top;++i) {
 		assign as = a.items[i];
-		if (as.type == ASS_TAB) {
+
+		// One register used for every expression
+		free_temp(f);
+
+		switch (as.type) {
+		case ASS_TAB:
 			if (!is_local(f, as.rkey)) {
 				free_temp(f);
 			}
 			if (!is_local(f, as.rtab)) {
 				free_temp(f);
 			}
+			push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rinb = f_reg++});
+			break;
+		default:
+			push_inst(l, f, (inst) { OP_MOV, .rout = as.rout, .rina = f_reg++});
+			break;
 		}
 	}
 
@@ -1087,6 +1068,7 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		size_t *local = find_local(f, l->current.lexme);
 		if (!local) {
 			// FIXME remove later in dev once globals and uptable added
+			puts(l->current.lexme);
 			printf("Error unable to find local!\n");
 			return -1;
 		}
