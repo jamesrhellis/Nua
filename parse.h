@@ -83,7 +83,10 @@ typedef struct {
 typedef struct {
 	const char *file;
 	const char *pos;
+
 	size_t line;
+	const char *lstart;
+
 	token current;
 } lexer;
 
@@ -255,6 +258,12 @@ token __lex_next(lexer *l) {
 	while (isspace(*l->pos)) {
 		if (*l->pos == '\n') {
 			l->line++;
+			l->lstart = l->pos;
+			const char *line = l->pos + 1;
+			while (*line && *line != '\n') {
+				putchar(*line++);
+			}
+			putchar('\n');
 		}
 		l->pos++;
 	}
@@ -315,6 +324,8 @@ typedef struct {
 	//Literals
 	val_al literals;
 } f_data;
+
+#include "log.h"
 
 int add_scope(f_data *f) {
 	return scope_al_push(&f->scopes, (ident_map) {0});
@@ -590,7 +601,7 @@ int parse_local(lexer *l, f_data *f) {
 
 	ident_al id = {0};
 	if (l->current.type != TOK_IDENT) {
-		printf("No identifier after local\n");
+		log_error(l, f, "No identifier after local\n");
 		return -1;
 	}
 	ident_al_push(&id, lex_claim_lexme(l));
@@ -599,7 +610,7 @@ int parse_local(lexer *l, f_data *f) {
 	while (l->current.type == TOK_COM) {
 		lex_next(l);
 		if (l->current.type != TOK_IDENT) {
-			printf("No identifier after comma \n");
+			log_error(l, f, "No identifier after comma \n");
 			return -1;
 		}
 
@@ -608,7 +619,7 @@ int parse_local(lexer *l, f_data *f) {
 	}
 
 	if (l->current.type != TOK_ASSIGN) {
-		printf("Error no assignment\n");
+		log_error(l, f, "Error no assignment\n");
 		return -1;
 	}
 	lex_next(l);
@@ -617,7 +628,7 @@ int parse_local(lexer *l, f_data *f) {
 	// Temps are used to avoid data dependency workarounds, to reduce register use
 	size_t reg = alloc_temp(f);;
 	if (parse_expr(l, f, reg)) {
-		printf("No expression after local\n");
+		log_error(l, f, "No expression after local\n");
 		return -1;
 	}
 	trans_temp(f, id.items[t++]);
@@ -627,12 +638,12 @@ int parse_local(lexer *l, f_data *f) {
 		lex_next(l);
 
 		if (t >= id.top) {
-			printf("Excess of expressions after local; %zu\n", t);
+			log_error(l, f, "Excess of expressions after local\n");
 			puts(l->current.lexme);
 			return -1;
 		}
 		if (parse_expr(l, f, reg)) {
-			printf("Unable to parse expression after local\n");
+			log_error(l, f, "Unable to parse expression after local\n");
 			return -1;
 		}
 
@@ -642,7 +653,7 @@ int parse_local(lexer *l, f_data *f) {
 	if (t < id.top) {
 		inst *i = inst_list_rpeek(&f->ins);
 		if (i->op != OP_CALL && (--i)->op != OP_CALL) {
-			printf("Lack of expressions after local\n");
+			log_error(l, f, "Lack of expressions after local\n");
 			return -1;
 		}
 		i->rinb += id.top - t;
@@ -708,7 +719,7 @@ int parse_assign(lexer *l, f_data *f) {
 			ass_al_push(&a, (assign) {ASS_TAB, .rtab = i.rina, .rkey = i.rinb});
 			break;
 		default:
-			printf("Error non-assignable primary expression in assignment\n");
+			log_error(l, f, "Error non-assignable primary expression in assignment\n");
 			print_inst(i);
 			return -1;
 		}
@@ -719,12 +730,12 @@ int parse_assign(lexer *l, f_data *f) {
 	}
 
 	if (!a.items) {
-		printf("Error no targets to assign\n");
+		log_error(l, f ,"Error no targets to assign\n");
 		return -1;
 	}
 
 	if (l->current.type != TOK_ASSIGN) {
-		printf("Error no assignment\n");
+		log_error(l, f, "Error no assignment\n");
 		return -1;
 	}
 	lex_next(l);
@@ -733,7 +744,7 @@ int parse_assign(lexer *l, f_data *f) {
 	size_t reg_base = reg;
 
 	if (parse_expr(l, f, reg)) {
-		printf("Error no rexpression\n");
+		log_error(l, f, "Error no rexpression\n");
 		return -1;
 	}
 
@@ -742,7 +753,7 @@ int parse_assign(lexer *l, f_data *f) {
 
 		lex_next(l);
 		if (t++ >= a.top || parse_expr(l, f, reg)) {
-			printf("Excess no of expressions\n");
+			log_error(l, f, "Excess no of expressions\n");
 			return -1;
 		}
 	}
@@ -750,7 +761,7 @@ int parse_assign(lexer *l, f_data *f) {
 	if (t < a.top) {
 		inst *i = inst_list_rpeek(&f->ins) - 1;
 		if (i->op != OP_CALL && (--i)->op != OP_CALL) {
-			printf("Lack of values to assign \n");
+			log_error(l, f, "Lack of values to assign \n");
 			return -1;
 		}
 
@@ -1093,7 +1104,7 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		break;
 	} case TOK_TABL:
 		if (parse_tab(l, f, reg)) {
-			printf("Error unable parse tab\n");
+			log_error(l, f, "Error unable parse tab\n");
 			return 1;
 		}
 		break;

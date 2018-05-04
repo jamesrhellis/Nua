@@ -4,7 +4,7 @@ i = 21
 local j = {1, i, nil}
 
 local k = fun(a, b)
-	ret a + b
+	return a + b
 end
 
 if i + 5 > 23 then

@@ -57,8 +57,12 @@ int main(int argn, char **args) {
 	func *base = calloc(sizeof(*base), 1);
 	*base = (func) { FUNC_NUA, .def = calloc(sizeof(*base->def), 1)};
 
-	if (parse((lexer){args[1], file}, base->def)) {
-		fprintf(stderr, "Unable to parse file!");
+	if (parse((lexer){args[1], file, .lstart = file}, base->def) || parse_errors.items) {
+		fprintf(stderr, "Unable to parse file!\n");
+		rh_al_for(struct error e, parse_errors, {
+			print_error(e);
+		})
+
 		return 1;
 	}
 
