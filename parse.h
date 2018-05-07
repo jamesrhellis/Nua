@@ -743,6 +743,8 @@ int parse_assign(lexer *l, f_data *f) {
 	size_t t = 1;
 	size_t reg_base = reg;
 
+	printf("reg:%zu\n", reg);
+
 	if (parse_expr(l, f, reg)) {
 		log_error(l, f, "Error no rexpression\n");
 		return -1;
@@ -868,37 +870,44 @@ int parse_expr(lexer *l, f_data *f, size_t reg) {
 
 int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 	size_t left = out;
-	if (is_local(f, out)) {
-		left = alloc_temp(f);
-	}
 
 	if (parse_pexpr(l, f, left)) {
-		if (is_local(f, out)) {
-			free_temp(f);
-		}
 		return 1;
 	}
 
+	inst i = inst_list_peek(&f->ins);
+	if (i.op == OP_MOV && (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence)) {
+		pop_inst(l, f);
+		left = i.rina;
+	}
+
 	size_t right = alloc_temp(f);
+	size_t temp = right;
 	while (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence) {
+		right = temp;
 		tokt op = l->current.type;
 		lex_next(l);
 
 		parse_bin_expr(l, f, right, bin_prec(op)+bin_assoc(op));
-		emit_bin_code(l, f, op, left, left, right);
+
+		inst i = inst_list_peek(&f->ins);
+		if (i.op == OP_MOV) {
+			pop_inst(l, f);
+			right = i.rina;
+		}
+		emit_bin_code(l, f, op, out, left, right);
 	}
 
 	free_temp(f);
-	if (is_local(f, out)) {
-		free_temp(f);
-	}
 
+	/*
 	// Fix the final instruction to output to out
 	if (inst_list_rpeek(&f->ins)->op != OP_CALL) {
 		inst_list_rpeek(&f->ins)->rout = out;
 	} else {
 		push_inst(l, f, (inst) {OP_MOV, .rout = out, .rina = inst_list_rpeek(&f->ins)->rout});
 	}
+	*/
 
 	return 0;
 }
@@ -929,11 +938,6 @@ int parse_tab(lexer *l, f_data *f, size_t reg) {
 		}
 
 		lex_next(l);
-	}
-
-	if (inst_list_peek(&f->ins).op != OP_TAB) {
-		// Useless mov to allow for a retargetable op at end
-		push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = reg});
 	}
 
 	free_temp(f);
@@ -982,9 +986,7 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 	case TOK_BRL:{
 		size_t f_reg = reg;
 		// func cannot be called from any reg other than the top - args needed
-		if (reg < (f->reg + f->temp) - 1) {
-			f_reg = alloc_temp(f);
-		}
+		assert(reg == (f->reg + f->temp - 1));
 
 		if (inst_list_peek(&f->ins).op == OP_MOV) {
 			inst temp = inst_list_pop(&f->ins);
@@ -1016,10 +1018,6 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 
 		push_inst(l, f, (inst) {OP_CALL, .rout = f_reg, .rina = no_args, .rinb = 1});
 
-		if (reg != f_reg) {
-			free_temp(f);
-			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = f_reg});
-		}
 		break;
 	}default:
 		break;
@@ -1093,9 +1091,9 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		break;
 	case TOK_NUM:{
 		double n = l->current.num;
-		if (n == floor(n) && n > -32768 && n < 32767) {
+		if (n == floor(n) && n >= -32768 && n <= 32767) {
 			int16_t i = n;
-			push_inst(l, f, (inst) {OP_SETI, reg, .ilit = i});
+			push_inst(l, f, (inst) {OP_SETI, ._reg = reg, .ilit = i});
 		} else {
 			push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
 			val_al_push(&f->literals, (val) {VAL_NUM, l->current.num});

@@ -3,7 +3,7 @@ i = 21
 
 local j = {1, i, nil}
 
-local k = fun(a, b)
+local k = function(a, b)
 	return a + b
 end
 

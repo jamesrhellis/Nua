@@ -118,6 +118,9 @@ int main(int argn, char **args) {
 			}
 			break;
 		case OP_CALL:
+			if (reg[ins.rout].type != VAL_FUNC) {
+				return 1;
+			}
 			// OP is interpreted
 			// .rout = func register, and base of func args - 1, base of return vals
 			// .rina = no args, call has to pad with nils
