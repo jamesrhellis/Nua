@@ -639,7 +639,6 @@ int parse_local(lexer *l, f_data *f) {
 
 		if (t >= id.top) {
 			log_error(l, f, "Excess of expressions after local\n");
-			puts(l->current.lexme);
 			return -1;
 		}
 		if (parse_expr(l, f, reg)) {
@@ -743,7 +742,6 @@ int parse_assign(lexer *l, f_data *f) {
 	size_t t = 1;
 	size_t reg_base = reg;
 
-	printf("reg:%zu\n", reg);
 
 	if (parse_expr(l, f, reg)) {
 		log_error(l, f, "Error no rexpression\n");
