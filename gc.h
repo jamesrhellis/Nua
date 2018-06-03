@@ -18,11 +18,11 @@ static inline mem_block *next_mem_block(mem_block *m) {
 
 static inline void mem_block_typetag(mem_block *m, uint8_t mem_type) {
 	uint8_t tag = mem_type << 1;
-	m->next = (mem_block *)((uintptr_t)m->next & ~((uintptr_t)0x110) | tag);
+	m->next = (mem_block *)(((uintptr_t)m->next & ~((uintptr_t)0x110)) | tag);
 }
 
 static inline void mem_block_coltag(mem_block *m, uint8_t colour) {
-	m->next = (mem_block *)((uintptr_t)m->next & ~((uintptr_t)0x1) | colour);
+	m->next = (mem_block *)(((uintptr_t)m->next & ~((uintptr_t)0x1)) | colour);
 }
 
 static inline uint8_t mem_block_tag(mem_block *m) {

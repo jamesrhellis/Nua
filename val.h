@@ -107,6 +107,17 @@ char *opcode_str[OPCODE_NO] =
                      {"NOP","SETL","SETI","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV", "TAB", "GTAB", "STAB", "PTAB", "CALL", "RET", "SENV", "GENV"};
 optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RU, OPT_RI, OPT_N, OPT_RU, OPT_O, OPT_RU , OPT_RRR, OPT_RRR, OPT_RRR
 	, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
+int op_retarget[OPCODE_NO] = {
+	[OP_SETL] = 1,
+	[OP_SETI] = 1,
+	[OP_NIL] = 1,
+	[OP_ADD] = 1,
+	[OP_SUB] = 1,
+	[OP_GT] = 1,
+	[OP_GE] = 1,
+	[OP_MOV] = 1,
+	[OP_TAB] = 1,
+};
 
 typedef struct inst {
 	uint8_t op;
@@ -226,6 +237,8 @@ int print_val(val v) {
 			break;
 		case FUNC_C:
 			puts("FUNC_C:");
+			break;
+		default:
 			break;
 		}
 		break;

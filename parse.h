@@ -351,7 +351,7 @@ int rem_scope(f_data *f) {
 size_t *find_local(f_data *f, char *ident) {
 	ident_map_bucket *local = NULL;
 	for (int i = f->scopes.top-1;i >= 0;--i) {
-		if (local = ident_map_find(&f->scopes.items[i], ident)) {
+		if ((local = ident_map_find(&f->scopes.items[i], ident))) {
 			return &local->value;
 		}
 	}
@@ -657,7 +657,7 @@ int parse_local(lexer *l, f_data *f) {
 		}
 		i->rinb += id.top - t;
 
-		size_t f_reg = i->rout;
+		//size_t f_reg = i->rout;
 		while (t < id.top) {
 			reg = alloc_local(f, id.items[t++]);
 			//assert(reg == ++f_reg);
@@ -740,8 +740,7 @@ int parse_assign(lexer *l, f_data *f) {
 	lex_next(l);
 
 	size_t t = 1;
-	size_t reg_base = reg;
-
+	size_t ins_base = f->ins.top;
 
 	if (parse_expr(l, f, reg)) {
 		log_error(l, f, "Error no rexpression\n");
@@ -766,6 +765,7 @@ int parse_assign(lexer *l, f_data *f) {
 		}
 
 		i->rinb += a.top - t;
+		// FIXME need to make work with the following code
 		// Un-needed allocation to simplify code at end
 		for (int j = 1;j < i->rinb;++j) {
 			alloc_temp(f);
@@ -773,19 +773,18 @@ int parse_assign(lexer *l, f_data *f) {
 	}
 
 	// Free all temps used for tab indexing
-	size_t f_reg = reg_base;
-	for (int i = 0;i < a.top;++i) {
+	int read[256] = {0};
+	size_t ins = f->ins.top - 1;
+	for (int i = a.top-1;i >= 0;--i) {
 		assign as = a.items[i];
-
-		// One register used for every expression
-		free_temp(f);
+		int r = reg - (a.top - i) + 1;
 
 		switch (as.type) {
 		case ASS_ENV:
 			if (!is_local(f, as.renv)) {
 				free_temp(f);
 			}
-			push_inst(l, f, (inst) {OP_SENV, .rina = as.renv , .rinb = f_reg++});
+			push_inst(l, f, (inst) {OP_SENV, .rina = as.renv , .rinb = r});
 			break;
 		case ASS_TAB:
 			if (!is_local(f, as.rkey)) {
@@ -794,10 +793,39 @@ int parse_assign(lexer *l, f_data *f) {
 			if (!is_local(f, as.rtab)) {
 				free_temp(f);
 			}
-			push_inst(l, f, (inst) { OP_STAB, .rout = as.rtab, .rina = as.rkey , .rinb = f_reg++});
+			push_inst(l, f, (inst) {OP_STAB, .rout = as.rtab, .rina = as.rkey , .rinb = r});
+			break;
+		case ASS_LOCAL:
+			while(!read[as.rout] && ins > ins_base) {
+				inst in = f->ins.items[ins];
+
+				switch (opcode_type[in.op]) {
+				case OPT_RU:
+				case OPT_RI:
+					if (in.reg == r) {
+						goto EXIT_LOOP;
+					}
+					break;
+				case OPT_RRR:
+					if (in.rout == r) {
+						goto EXIT_LOOP;
+					}
+					read[in.rina] = 1;
+					read[in.rinb] = 1;
+					break;
+				default:
+					break;
+				}
+				--ins;
+			}
+			EXIT_LOOP:
+			if (read[as.rout] || !op_retarget[f->ins.items[ins].op]) {
+				push_inst(l, f, (inst) {OP_MOV, .rout = as.rout, .rina = r});
+			} else {
+				f->ins.items[ins].rout = as.rout;
+			}
 			break;
 		default:
-			push_inst(l, f, (inst) { OP_MOV, .rout = as.rout, .rina = f_reg++});
 			break;
 		}
 	}
