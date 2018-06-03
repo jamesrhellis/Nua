@@ -1,0 +1,8 @@
+CC = clang
+CFLAGS = -Wall -Werror -g -Wno-unused-function -Wno-missing-braces -std=c11
+LFLAGS = -Wall -Werror -g
+INCLUDE = -I gen -I include
+LLIBS = -lm
+
+: foreach *.c |> $(CC) $(INCLUDE) $(CFLAGS) -c %f -o %o |> obj/%B.o
+: obj/*.o |> $(CC) $(LFLAGS) $(LLIBS) %f -o %o |> test
