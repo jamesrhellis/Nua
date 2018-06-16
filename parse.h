@@ -309,6 +309,8 @@ char *lex_claim_lexme(lexer *l) {
 RH_HASH_MAKE(ident_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
 RH_AL_MAKE(scope_al, ident_map)
 
+RH_HASH_MAKE(val_map, val, size_t, val_hash, val_eq, 0.9)
+
 typedef struct {
 	//Variable register allocation
 	scope_al scopes;
@@ -323,6 +325,7 @@ typedef struct {
 
 	//Literals
 	val_al literals;
+	val_map lit_map;
 } f_data;
 
 #include "log.h"
@@ -369,7 +372,13 @@ size_t *find_local_top(f_data *f, char *ident) {
 }
 
 size_t alloc_literal(f_data *f, val value) {
+	val_map_bucket *v = val_map_find(&f->lit_map, value);
+	if (v) {
+		return v->value;
+	}
+
 	val_al_push(&f->literals, value);
+	val_map_set(&f->lit_map, value, f->literals.top-1);
 	return f->literals.top-1;
 }
 
@@ -1000,8 +1009,7 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 			return -1;
 		}
 
-		push_inst(l, f, (inst) {OP_SETL, temp, f->literals.top});
-		val_al_push(&f->literals, (val) {VAL_STR, .str = lex_claim_lexme(l)});
+		push_inst(l, f, (inst) {OP_SETL, temp, alloc_literal(f, (val) {VAL_STR, .str = lex_claim_lexme(l)})});
 
 		push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = reg, .rinb = temp});
 
@@ -1103,8 +1111,8 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	func *fun = calloc(sizeof(*fun), 1);
 	*fun = (func) { FUNC_NUA, .def = fun_def};
 
-	push_inst(l, f, (inst) { OP_SETL, reg, f->literals.top });
-	alloc_literal(f, (val) { VAL_FUNC, .func = fun });
+	push_inst(l, f, (inst) { OP_SETL, reg
+		, alloc_literal(f, (val) { VAL_FUNC, .func = fun })});
 
 	return 0;
 }
@@ -1116,14 +1124,14 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		lex_next(l);
 		break;
 	case TOK_NUM:{
-		double n = l->current.num;
-		if (n == floor(n) && n >= -32768 && n <= 32767) {
-			int16_t i = n;
-			push_inst(l, f, (inst) {OP_SETI, ._reg = reg, .ilit = i});
-		} else {
-			push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
-			val_al_push(&f->literals, (val) {VAL_NUM, l->current.num});
-		}
+//		double n = l->current.num;
+//		if (n == floor(n) && n >= -32768 && n <= 32767) {
+//			int16_t i = n;
+//			push_inst(l, f, (inst) {OP_SETI, ._reg = reg, .ilit = i});
+//		} else {
+			push_inst(l, f, (inst) {OP_SETL, reg
+				, alloc_literal(f, (val) {VAL_NUM, l->current.num})});
+//		}
 		lex_next(l);
 		break;
 	} case TOK_TABL:
@@ -1137,8 +1145,8 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		if (local) {
 			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local});
 		} else {
-			push_inst(l, f, (inst) {OP_SETL, reg, f->literals.top});
-			val_al_push(&f->literals, (val) {VAL_STR, .str=lex_claim_lexme(l)});
+			push_inst(l, f, (inst) {OP_SETL, reg
+				, alloc_literal(f, (val) {VAL_STR, .str=lex_claim_lexme(l)})});
 			push_inst(l, f, (inst) {OP_GENV, .rout = reg, .rina = reg});
 		}
 		lex_next(l);
