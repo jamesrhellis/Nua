@@ -41,6 +41,16 @@ typedef struct global {
 	mem_grey_link *gc_grey;	// Incrementally processed objects
 } global;
 
+int nua_print_val(int no_args, val *stack) {
+	if (!no_args) {
+		return 0;
+	}
+	
+	print_val(*stack);
+	fflush(stdout);
+	return 0;
+}
+
 int main(int argn, char **args) {
 	if (argn < 2) {
 		return 0;
@@ -66,7 +76,7 @@ int main(int argn, char **args) {
 		return 1;
 	}
 
-	print_func_def(*base->def);
+	//print_func_def(*base->def);
 
 	global g = {0}; {
 		thread t = {.stack = val_al_new(256), .func = frame_stack_new(8)};
@@ -83,6 +93,12 @@ int main(int argn, char **args) {
 	val *reg = &t->stack.items[top->reg_base];
 	val *lit = top->func->def->literals.items;
 	tab *env = top->env;
+	
+	func *print =  gc_alloc(&g.gc_list, sizeof(*print));
+	*print = (func){FUNC_C, .c_func = &nua_print_val};
+	
+	tab_set(env, (val){VAL_STR, .str = "print"}, 
+		(val){VAL_FUNC, .func = print});
 
 	while (true) {
 		inst ins = top->func->def->ins.items[top->ins];
@@ -119,33 +135,55 @@ int main(int argn, char **args) {
 			break;
 		case OP_CALL:
 			if (reg[ins.rout].type != VAL_FUNC) {
-				return 1;
+				printf("Attempt to call non-function!\n");
+				print_val(reg[ins.rout]);
+				return -1;
 			}
 			// OP is interpreted
 			// .rout = func register, and base of func args - 1, base of return vals
 			// .rina = no args, call has to pad with nils
 			// .rinb = no return vals, return has to pad with nils
 			frame_stack_push(&t->func, (frame) {.func = reg[ins.rout].func, .reg_base = &reg[ins.rout+1] - t->stack.items});
-			size_t max = t->stack.top + reg[ins.rout].func->def->max_reg;
+			switch (reg[ins.rout].func->type) {
+			case FUNC_NUA: {
 
-			if (max >= t->stack.size) {
-				val_al_resize(&t->stack, t->stack.size * 2);
+				size_t max = t->stack.top + reg[ins.rout].func->def->max_reg;
+
+				if (max >= t->stack.size) {
+					val_al_resize(&t->stack, t->stack.size * 2);
+				}
+
+				for (int i = ins.rina;i < reg[ins.rout].func->def->no_args;++i) {
+					reg[ins.rout + i] = (val) { VAL_NIL };
+				}
+
+				top = frame_stack_rpeek(&t->func);
+
+				reg = &t->stack.items[top->reg_base];
+				lit = top->func->def->literals.items;
+				if (top->func->env) {
+					env = top->env = top->func->env;
+				} else {
+					env = (top-1)->env;
+				}
+			} break;
+			case FUNC_C: {	
+				top = frame_stack_rpeek(&t->func);
+				int no_ret = reg[ins.rout].func->c_func(ins.rina, &t->stack.items[top->reg_base]);
+				
+				for (int i = no_ret;i < ins.rinb;++i) {
+					reg[ins.rout + i] = (val) { VAL_NIL };
+				}
+				
+				frame_stack_pop(&t->func);
+				top = frame_stack_rpeek(&t->func);
+				
+				top->ins++;
+			} break;
+			default:
+				printf("ERROR: invalid function called\n");
+				return -1;
 			}
-
-			for (int i = ins.rina;i < reg[ins.rout].func->def->no_args;++i) {
-				reg[ins.rout + i] = (val) { VAL_NIL };
-			}
-
-			top = frame_stack_rpeek(&t->func);
-
-			reg = &t->stack.items[top->reg_base];
-			lit = top->func->def->literals.items;
-			if (top->func->env) {
-				env = top->env = top->func->env;
-			} else {
-				env = (top-1)->env;
-			}
-
 			// Avoid skipping the first instruction
 			continue;
 		case OP_RET:

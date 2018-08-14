@@ -19,3 +19,5 @@ while i > 23 do
 end
 
 i = k(32 ,i)
+
+j = print(i)

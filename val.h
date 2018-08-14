@@ -24,12 +24,16 @@ static inline uint64_t val_hash(const val v) {
 	switch (v.type) {
 	case VAL_NUM:
 		hash = *((uint64_t *)&(v.num));
+		break;
 	case VAL_TAB:
 		hash = ((uintptr_t)(v.tab));
+		break;
 	case VAL_STR:
-		hash = ((uintptr_t)(v.str));
+		hash = rh_string_hash(v.str);
+		break;
 	case VAL_FUNC:
 		hash = ((uintptr_t)(v.func));
+		break;
 	default:
 		break;
 	}
@@ -45,7 +49,7 @@ static inline int val_eq(const val a, const val b) {
 	case VAL_TAB:
 		return (b.type == VAL_TAB) && a.tab == b.tab;
 	case VAL_STR:
-		return (b.type == VAL_STR) && a.str == b.str;
+		return rh_string_eq(a.str, b.str);
 	case VAL_FUNC:
 		return (b.type == VAL_FUNC) && a.func == b.func;
 	default:
@@ -174,7 +178,7 @@ typedef struct func {
 		};
 		struct {
 			// TODO Real c function type
-			void *c_func;
+			int (*c_func)(int no_args, val *stack);
 		};
 	};
 } func;

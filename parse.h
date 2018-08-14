@@ -260,10 +260,12 @@ token __lex_next(lexer *l) {
 			l->line++;
 			l->lstart = l->pos;
 			const char *line = l->pos + 1;
+			/*
 			while (*line && *line != '\n') {
 				putchar(*line++);
 			}
 			putchar('\n');
+			*/
 		}
 		l->pos++;
 	}
