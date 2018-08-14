@@ -632,10 +632,13 @@ int parse_local(lexer *l, f_data *f) {
 		return -1;
 	}
 	lex_next(l);
-
+	
+	assert(f->temp == 0);
+	
 	size_t t = 0;
 	// Temps are used to avoid data dependency workarounds, to reduce register use
-	size_t reg = alloc_temp(f);;
+	size_t reg = alloc_temp(f);
+
 	if (parse_expr(l, f, reg)) {
 		log_error(l, f, "No expression after local\n");
 		return -1;
@@ -674,7 +677,8 @@ int parse_local(lexer *l, f_data *f) {
 	}
 
 	ident_al_free(&id);
-
+	
+	assert(f->temp == 0);
 	return 0;
 }
 
@@ -702,6 +706,8 @@ int parse_assign(lexer *l, f_data *f) {
 	size_t reg = alloc_temp(f);
 	while (l->current.type == TOK_IDENT) {
 		if (parse_pexpr(l, f, reg)) {
+			assert(f->temp == 0);
+			log_error(l, f ,"Error invalid target to assign\n");
 			break;
 		}
 
@@ -712,6 +718,7 @@ int parse_assign(lexer *l, f_data *f) {
 			break;
 		case OP_GENV:
 			if (!is_local(f, i.rina)) {
+				// Register reserved for the name of the global
 				reg = alloc_temp(f);
 			}
 			ass_al_push(&a, (assign) {ASS_ENV, .renv = i.rina});
@@ -719,9 +726,11 @@ int parse_assign(lexer *l, f_data *f) {
 		case OP_GTAB:
 			// Key, Value and tab
 			if (!is_local(f, i.rinb)) {
+				// Register reserved for the table
 				alloc_temp(f);
 			}
 			if (!is_local(f, i.rina)) {
+				// Register reserved for the index
 				reg = alloc_temp(f);
 			}
 			ass_al_push(&a, (assign) {ASS_TAB, .rtab = i.rina, .rkey = i.rinb});
@@ -837,14 +846,18 @@ int parse_assign(lexer *l, f_data *f) {
 		default:
 			break;
 		}
+		free_temp(f);
 	}
+	
+	assert(f->temp == 0);
 
 	return 0;
 }
 
 int emit_bin_code(lexer *l, f_data *f, tokt op, size_t out, size_t left, size_t right) {
 	inst *i = inst_list_rpeek(&f->ins);
-	if (i->op == OP_MOV) {
+	// Binary expression may be returned from a func with no prior instructions
+	if (i && i->op == OP_MOV) {
 		if (i->rout == right) {
 			right = i->rina;
 			pop_inst(l, f);
