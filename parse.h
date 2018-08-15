@@ -703,16 +703,21 @@ int parse_assign(lexer *l, f_data *f) {
 	if (l->current.type != TOK_IDENT) {
 		return 1;
 	}
+	
+	size_t reg = alloc_temp(f);
+	if (parse_pexpr(l, f, reg)) {
+		log_error(l, f ,"Error invalid primary expression\n");
+		return -1;
+	}
+	
+	// Early return to parse primary expressions - e.g function calls
+	if (l->current.type != TOK_COM && l->current.type != TOK_ASSIGN) {
+		free_temp(f);
+		return 0;
+	}
 
 	ass_al a = {0};
-	size_t reg = alloc_temp(f);
-	while (l->current.type == TOK_IDENT) {
-		if (parse_pexpr(l, f, reg)) {
-			assert(f->temp == 0);
-			log_error(l, f ,"Error invalid target to assign\n");
-			break;
-		}
-
+	while (true) {
 		inst i = pop_inst(l, f);
 		switch (i.op) {
 		case OP_MOV:
@@ -744,7 +749,13 @@ int parse_assign(lexer *l, f_data *f) {
 		}
 
 		if (l->current.type == TOK_COM) {
-			lex_next(l);
+			lex_next(l);		
+			if (parse_pexpr(l, f, reg)) {
+				log_error(l, f ,"Error invalid target to assign\n");
+				return -1;
+			}
+		} else {
+			break;
 		}
 	}
 
