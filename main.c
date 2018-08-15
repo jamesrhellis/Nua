@@ -51,25 +51,6 @@ int nua_print_val(int no_args, val *stack) {
 	return 0;
 }
 
-void gc_val_mark(val *v, int white) {
-	switch (v->type) {
-	case VAL_TAB: {
-		for (int i = 0;i < v->tab->al.top;++i) {
-			gc_val_mark(&v->tab->al.items[i], white);
-		}
-		for (int i = 0;i < RH_HASH_SIZE(v->tab->ht.size);++i) {
-			if (v->tab->ht.hash[i]) {
-				gc_val_mark(&v->tab->ht.items[i].key, white);
-				gc_val_mark(&v->tab->ht.items[i].value, white);
-			}
-		}
-		mem_block_coltag((mem_block *)&v->tab->link, !white);
-	} case VAL_FUNC:
-	default:
-		break;
-	}
-}
-
 void gc_mark(global *g) {
 	g->white = !g->white;
 	int white = g->white;
@@ -79,10 +60,10 @@ void gc_mark(global *g) {
 		
 		// FIXME get real top from instruction
 		for (int i = 0;i < td->stack.top;++i) {
-			gc_val_mark(&td->stack.items[i], white);
+			gc_val_mark(&td->stack.items[i], !white);
 		}
 	}
-}	
+}
 
 int main(int argn, char **args) {
 	if (argn < 2) {
@@ -97,8 +78,8 @@ int main(int argn, char **args) {
 
 	parse_init();
 
-	func *base = calloc(sizeof(*base), 1);
-	*base = (func) { FUNC_NUA, .def = calloc(sizeof(*base->def), 1)};
+	func *base = gc_alloc(&global_heap, sizeof(*base), GC_FUNC);
+	*base = (func) { .type = FUNC_NUA, .def = calloc(sizeof(*base->def), 1)};
 
 	if (parse((lexer){args[1], file, .lstart = file}, base->def) || parse_errors.items) {
 		fprintf(stderr, "Unable to parse file!\n");
@@ -113,8 +94,7 @@ int main(int argn, char **args) {
 
 	global g = {0}; {
 		thread t = {.stack = val_al_new(256), .func = frame_stack_new(8)};
-		tab *env = gc_alloc(&global_heap, sizeof(tab));
-		tab_set(env, (val){VAL_NUM, .num = 0}, (val){VAL_TAB, .tab = env});
+		tab *env = gc_alloc(&global_heap, sizeof(tab), GC_TAB);
 		frame_stack_push(&t.func, (frame) {.func = base, .env = env, .reg_base = 1});
 		val_al_push(&t.stack, (val) {VAL_FUNC, .func = base});
 
@@ -128,8 +108,9 @@ int main(int argn, char **args) {
 	val *lit = top->func->def->literals.items;
 	tab *env = top->env;
 	
-	func *print =  gc_alloc(&global_heap, sizeof(*print));
-	*print = (func){FUNC_C, .c_func = &nua_print_val};
+	func *print =  gc_alloc(&global_heap, sizeof(*print), GC_FUNC);
+	print->type = FUNC_C;
+	print->c_func = &nua_print_val;
 	
 	tab_set(env, (val){VAL_STR, .str = intern(&global_heap, &global_intern_map, (slice) {
 		.len = 5,
@@ -156,13 +137,14 @@ int main(int argn, char **args) {
 		case OP_SETL:
 			switch (lit[ins.lit].type) {
 			case VAL_TAB:
-				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab))};
+				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab), GC_TAB)};
 				reg[ins.reg].tab->al = val_al_clone(&lit[ins.lit].tab->al);
 				reg[ins.reg].tab->ht = val_ht_clone(&lit[ins.lit].tab->ht);
 				break;
 			case VAL_FUNC:
-				reg[ins.reg] = (val) {VAL_FUNC, .tab = gc_alloc(&g.gc_list, sizeof(tab))};
-				*reg[ins.reg].func = (func) {FUNC_NUA, .def = lit[ins.lit].func->def};
+				reg[ins.reg] = (val) {VAL_FUNC, .func = gc_alloc(&g.gc_list, sizeof(func), GC_FUNC)};
+				reg[ins.reg].func->type = FUNC_NUA;
+				reg[ins.reg].func->def = lit[ins.lit].func->def;
 				break;
 			default:
 				reg[ins.reg] = lit[ins.lit];
@@ -287,7 +269,7 @@ int main(int argn, char **args) {
 			reg[ins.rout] = reg[ins.rina];
 			break;
 		case OP_TAB:
-			reg[ins.rout] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab))};
+			reg[ins.rout] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab), GC_TAB)};
 			val_ht_resize(&reg[ins.rout].tab->ht, ins.rina);
 			val_al_resize(&reg[ins.rout].tab->al, RH_HASH_SIZE(ins.rinb));
 			break;

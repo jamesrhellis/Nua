@@ -2,6 +2,7 @@
 #define VAL_H
 
 #include "intern.h"
+#include "gc_types.h"
 
 typedef enum val_type { VAL_NIL, VAL_NUM, VAL_STR, VAL_FUNC, VAL_TAB, VAL_TYPE_NO } val_type;
 const char *val_type_str[VAL_TYPE_NO] = { "NIL", "NUM", "STR", "FUNC", "TAB" };
@@ -62,7 +63,7 @@ static inline int val_eq(const val a, const val b) {
 RH_HASH_MAKE(val_ht, val, val, val_hash, val_eq, 0.9)
 RH_AL_MAKE(val_al, val)
 typedef struct tab {
-	mem_grey_link link;
+	mem_block link;
 	val_al al;
 	val_ht ht;
 } tab;
@@ -152,7 +153,7 @@ RH_AL_MAKE(inst_lines, int)
 RH_HASH_MAKE(loc_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
 
 typedef struct func_def {
-	mem_grey_link link;
+	mem_block link;
 
 	// Properties
 	uint8_t max_reg;
@@ -170,6 +171,7 @@ typedef struct func_def {
 typedef enum funct { FUNC_ERR, FUNC_NUA, FUNC_C } funct;
 
 typedef struct func {
+	mem_block link;
 	funct type;
 	union {
 		struct {

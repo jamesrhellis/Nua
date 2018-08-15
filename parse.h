@@ -1135,7 +1135,7 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	}
 	lex_next(l);
 
-	func_def *fun_def = calloc(sizeof(*fun_def), 1);
+	func_def *fun_def = gc_alloc(&global_heap, sizeof(*fun_def), GC_FUNCDEF);
 	fun_def->ins = fd.ins;
 	fun_def->max_reg = fd.max_reg;
 	fun_def->no_args = no_args;
@@ -1144,8 +1144,9 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 
 	fun_def->file = l->file;
 
-	func *fun = calloc(sizeof(*fun), 1);
-	*fun = (func) { FUNC_NUA, .def = fun_def};
+	func *fun = gc_alloc(&global_heap, sizeof(*fun), GC_FUNC);
+	fun->type = FUNC_NUA;
+	fun->def = fun_def;
 
 	push_inst(l, f, (inst) { OP_SETL, reg
 		, alloc_literal(f, (val) { VAL_FUNC, .func = fun })});

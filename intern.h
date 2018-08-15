@@ -3,6 +3,8 @@
 
 #include "gen/rh_hash.h"
 
+#include "gc_types.h"
+
 typedef struct slice {
 	int len;
 	char *str;
@@ -51,8 +53,8 @@ slice slice_from_intern(interned_str *i) {
 	};
 }
 
-interned_str *intern_from_slice(slice c) {
-	interned_str *s = malloc(sizeof(interned_str) + c.len + 1);
+interned_str *intern_from_slice(mem_block **gc, slice c) {
+	interned_str *s = gc_alloc(gc, sizeof(interned_str) + c.len + 1, GC_FLAT);
 	s->len = c.len;
 	s->link.next = NULL;
 	memcpy(s->str, c.str, c.len);
@@ -61,16 +63,10 @@ interned_str *intern_from_slice(slice c) {
 	return s;
 }
 
-void gc_link_interned_str(mem_block **m, interned_str *s) {
-	s->link.next = *m;
-	*m = &s->link;
-}
-
 interned_str *intern(mem_block **gc, str_map *m, slice s) {
 	str_map_bucket *b = str_map_find(m, s);
 	if (!b) {
-		interned_str *i = intern_from_slice(s);
-		gc_link_interned_str(gc, i);
+		interned_str *i = intern_from_slice(gc, s);
 		
 		str_map_set(m, slice_from_intern(i), i);
 		return i;
