@@ -51,6 +51,39 @@ int nua_print_val(int no_args, val *stack) {
 	return 0;
 }
 
+void gc_val_mark(val *v, int white) {
+	switch (v->type) {
+	case VAL_TAB: {
+		for (int i = 0;i < v->tab->al.top;++i) {
+			gc_val_mark(&v->tab->al.items[i], white);
+		}
+		for (int i = 0;i < RH_HASH_SIZE(v->tab->ht.size);++i) {
+			if (v->tab->ht.hash[i]) {
+				gc_val_mark(&v->tab->ht.items[i].key, white);
+				gc_val_mark(&v->tab->ht.items[i].value, white);
+			}
+		}
+		mem_block_coltag((mem_block *)&v->tab->link, !white);
+	} case VAL_FUNC:
+	default:
+		break;
+	}
+}
+
+void gc_mark(global *g) {
+	g->white = !g->white;
+	int white = g->white;
+	
+	for (int t = 0;t < g->threads.top;++t) {
+		thread *td = &g->threads.items[t];
+		
+		// FIXME get real top from instruction
+		for (int i = 0;i < td->stack.top;++i) {
+			gc_val_mark(&td->stack.items[i], white);
+		}
+	}
+}	
+
 int main(int argn, char **args) {
 	if (argn < 2) {
 		return 0;
@@ -82,7 +115,8 @@ int main(int argn, char **args) {
 		thread t = {.stack = val_al_new(256), .func = frame_stack_new(8)};
 		tab *env = gc_alloc(&g.gc_list, sizeof(tab));
 		tab_set(env, (val){VAL_NUM, .num = 0}, (val){VAL_TAB, .tab = env});
-		frame_stack_push(&t.func, (frame) {.func = base, .env = env});
+		frame_stack_push(&t.func, (frame) {.func = base, .env = env, .reg_base = 1});
+		val_al_push(&t.stack, (val) {VAL_FUNC, .func = base});
 
 		thread_list_push(&g.threads, t);
 	}
