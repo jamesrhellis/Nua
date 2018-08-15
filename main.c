@@ -51,6 +51,30 @@ int nua_print_val(int no_args, val *stack) {
 	return 0;
 }
 
+size_t gc_ins_max(inst ins) {
+	switch (ins.op) {
+	case OP_CALL: case OP_RET:
+		return ins.rout + ins.rina;
+	default:
+		switch (opcode_type[ins.op]) {
+		case OPT_RRR:
+			return ins.rina > ins.rinb ? ins.rina : ins.rinb;
+		case OPT_RI: case OPT_RU:
+			return ins.reg;
+		case OPT_O: case OPT_N:
+			return 256;
+		}
+	}
+	
+	// Should never be reached
+	return 256;
+}
+
+size_t gc_stack_top(thread *td) {
+	frame *f = frame_stack_rpeek(&td->func);
+	return f->reg_base + gc_ins_max(f->func->def->ins.items[f->ins]);
+}
+
 void gc_mark(global *g) {
 	g->white = !g->white;
 	int white = g->white;
@@ -59,7 +83,7 @@ void gc_mark(global *g) {
 		thread *td = &g->threads.items[t];
 		
 		// FIXME get real top from instruction
-		for (int i = 0;i < td->stack.top;++i) {
+		for (int i = 0;i < gc_stack_top(td);++i) {
 			gc_val_mark(&td->stack.items[i], !white);
 		}
 	}
