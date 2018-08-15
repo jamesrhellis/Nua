@@ -113,7 +113,7 @@ int main(int argn, char **args) {
 
 	global g = {0}; {
 		thread t = {.stack = val_al_new(256), .func = frame_stack_new(8)};
-		tab *env = gc_alloc(&g.gc_list, sizeof(tab));
+		tab *env = gc_alloc(&global_heap, sizeof(tab));
 		tab_set(env, (val){VAL_NUM, .num = 0}, (val){VAL_TAB, .tab = env});
 		frame_stack_push(&t.func, (frame) {.func = base, .env = env, .reg_base = 1});
 		val_al_push(&t.stack, (val) {VAL_FUNC, .func = base});
@@ -128,10 +128,12 @@ int main(int argn, char **args) {
 	val *lit = top->func->def->literals.items;
 	tab *env = top->env;
 	
-	func *print =  gc_alloc(&g.gc_list, sizeof(*print));
+	func *print =  gc_alloc(&global_heap, sizeof(*print));
 	*print = (func){FUNC_C, .c_func = &nua_print_val};
 	
-	tab_set(env, (val){VAL_STR, .str = "print"}, 
+	tab_set(env, (val){VAL_STR, .str = intern(&global_heap, &global_intern_map, (slice) {
+		.len = 5,
+		.str = "print"})}, 
 		(val){VAL_FUNC, .func = print});
 
 	while (true) {

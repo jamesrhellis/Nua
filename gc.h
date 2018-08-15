@@ -50,4 +50,6 @@ void gc_sweep(mem_block **p, uint8_t white_tag) {
 	}
 }
 
+mem_block *global_heap;
+
 #endif

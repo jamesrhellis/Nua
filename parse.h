@@ -5,8 +5,11 @@
 #include <errno.h>
 #include <ctype.h>
 #include <assert.h>
+
 #include "gen/rh_hash.h"
 #include "gen/rh_al.h"
+
+#include "intern.h"
 
 static char *load_file(char *file_name) {
 	if (!file_name) {
@@ -1035,7 +1038,14 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 			return -1;
 		}
 
-		push_inst(l, f, (inst) {OP_SETL, temp, alloc_literal(f, (val) {VAL_STR, .str = lex_claim_lexme(l)})});
+		char *ident = lex_claim_lexme(l);
+		push_inst(l, f, (inst) {OP_SETL, temp, alloc_literal(f, (val) {VAL_STR,
+					.str = intern(&global_heap, &global_intern_map, (slice) {
+						.len = strlen(ident),
+						.str = ident })
+					})
+				});
+		free(ident);
 
 		push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = reg, .rinb = temp});
 
@@ -1171,8 +1181,14 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		if (local) {
 			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local});
 		} else {
-			push_inst(l, f, (inst) {OP_SETL, reg
-				, alloc_literal(f, (val) {VAL_STR, .str=lex_claim_lexme(l)})});
+			char *ident = lex_claim_lexme(l);
+			push_inst(l, f, (inst) {OP_SETL, reg, alloc_literal(f, (val) {VAL_STR,
+						.str = intern(&global_heap, &global_intern_map, (slice) {
+							.len = strlen(ident),
+							.str = ident })
+						})
+					});
+			free(ident);
 			push_inst(l, f, (inst) {OP_GENV, .rout = reg, .rina = reg});
 		}
 		lex_next(l);

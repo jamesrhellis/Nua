@@ -1,6 +1,8 @@
 #ifndef VAL_H
 #define VAL_H
 
+#include "intern.h"
+
 typedef enum val_type { VAL_NIL, VAL_NUM, VAL_STR, VAL_FUNC, VAL_TAB, VAL_TYPE_NO } val_type;
 const char *val_type_str[VAL_TYPE_NO] = { "NIL", "NUM", "STR", "FUNC", "TAB" };
 
@@ -11,7 +13,7 @@ typedef struct {
 	val_type type;
 	union {
 		double num;
-		char *str;
+		interned_str *str;
 		struct func *func;
 		struct tab *tab;
 
@@ -29,7 +31,7 @@ static inline uint64_t val_hash(const val v) {
 		hash = ((uintptr_t)(v.tab));
 		break;
 	case VAL_STR:
-		hash = rh_string_hash(v.str);
+		hash = ((uintptr_t)(v.str));
 		break;
 	case VAL_FUNC:
 		hash = ((uintptr_t)(v.func));
@@ -49,7 +51,7 @@ static inline int val_eq(const val a, const val b) {
 	case VAL_TAB:
 		return (b.type == VAL_TAB) && a.tab == b.tab;
 	case VAL_STR:
-		return rh_string_eq(a.str, b.str);
+		return (b.type == VAL_STR) && a.str == b.str;
 	case VAL_FUNC:
 		return (b.type == VAL_FUNC) && a.func == b.func;
 	default:
