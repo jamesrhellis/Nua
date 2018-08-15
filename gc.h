@@ -50,12 +50,20 @@ void gc_sweep(mem_block **p, uint8_t white_tag) {
 
 void gc_val_mark(val *v, int black);
 void gc_func_def_mark(func_def *d, int black) {
+	if (mem_block_col(&d->link) == black) {
+		return;
+	}
+	
 	for (int i = 0;i < d->literals.top;++i) {
 		gc_val_mark(&d->literals.items[i], black);
 	}
 	mem_block_coltag(&d->link, black);
 }
 void gc_tab_mark(tab *t, int black) {
+	if (mem_block_col(&t->link) == black) {
+		return;
+	}
+	
 	for (int i = 0;i < t->al.top;++i) {
 		gc_val_mark(&t->al.items[i], black);
 	}
@@ -73,6 +81,10 @@ void gc_val_mark(val *v, int black) {
 		gc_tab_mark(v->tab, black);
 		break;
 	} case VAL_FUNC: {
+		if (mem_block_col(&v->func->link) == black) {
+			return;
+		}
+		
 		for (int i = 0;i < v->func->upvals.top;++i) {
 			gc_val_mark(&v->func->upvals.items[i], black);
 		}
