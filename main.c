@@ -89,7 +89,7 @@ void gc_mark(global *g) {
 		
 		// FIXME get real top from instruction
 		for (int i = 0;i < gc_stack_top(td);++i) {
-			printf("; %ld\n", gc_stack_top(td));
+			printf("; %ld, i%d\n", gc_stack_top(td), i);
 			gc_val_mark(&td->stack.items[i], !white);
 		}
 		
@@ -129,6 +129,9 @@ int main(int argn, char **args) {
 
 	global g = {0}; {
 		thread t = {.stack = val_al_new(256), .func = frame_stack_new(8)};
+		for (int i = 0; i < t.stack.size;++i) {
+			t.stack.items[i] = (val) { VAL_NIL };
+		}
 		tab *env = gc_alloc(&global_heap, sizeof(tab), GC_TAB);
 		frame_stack_push(&t.func, (frame) {.func = base, .env = env, .reg_base = 1});
 		val_al_push(&t.stack, (val) {VAL_FUNC, .func = base});
@@ -204,7 +207,11 @@ int main(int argn, char **args) {
 				size_t max = t->stack.top + reg[ins.rout].func->def->max_reg;
 
 				if (max >= t->stack.size) {
-					val_al_resize(&t->stack, t->stack.size * 2);
+					size_t old = t->stack.size, new = t->stack.size * 2;
+					val_al_resize(&t->stack, new);
+					for (size_t i = old;i < new;++i) {
+						t->stack.items[i] = (val) { VAL_NIL };
+					}
 				}
 
 				for (int i = ins.rina;i < reg[ins.rout].func->def->no_args;++i) {
@@ -355,9 +362,9 @@ int main(int argn, char **args) {
 		default:
 			break;
 		}
-		top->ins++;
 		gc_mark(&g);
 		gc_sweep(&global_heap, g.white);
+		top->ins++;
 	}
 
 	return 0;
