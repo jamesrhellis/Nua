@@ -76,6 +76,7 @@ size_t gc_stack_top(thread *td) {
 	if (top_reg > f->func->def->max_reg) {
 		top_reg = f->func->def->max_reg;
 	}
+	printf("%ld, %ld", f->reg_base, top_reg);
 	return f->reg_base + top_reg;
 }
 
@@ -88,7 +89,13 @@ void gc_mark(global *g) {
 		
 		// FIXME get real top from instruction
 		for (int i = 0;i < gc_stack_top(td);++i) {
+			printf("; %ld\n", gc_stack_top(td));
 			gc_val_mark(&td->stack.items[i], !white);
+		}
+		
+		// Functions should be marked on the stack
+		for (int i = 0;i < td->func.top;++i) {
+			gc_tab_mark(td->func.items[i].env, !white);
 		}
 	}
 }
@@ -147,6 +154,7 @@ int main(int argn, char **args) {
 
 	while (true) {
 		inst ins = top->func->def->ins.items[top->ins];
+		print_inst(ins);
 		switch (ins.op) {
 		case OP_JMP:
 			top->ins += ins.off;
@@ -348,6 +356,8 @@ int main(int argn, char **args) {
 			break;
 		}
 		top->ins++;
+		gc_mark(&g);
+		gc_sweep(&global_heap, g.white);
 	}
 
 	return 0;

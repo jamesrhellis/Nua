@@ -10,27 +10,32 @@ void gc_sweep(mem_block **p, uint8_t white_tag) {
 	}
 	
 	// TODO clear intern table before the gc
-	mem_block **i = p;
+	mem_block **prev = p;
+	mem_block *current = *p;
 
-	while ((*i)->next) {
-		if (white_tag ==  mem_block_tag((*i)->next)) {
-			mem_block *tofree = *i;
-			set_next_mem_block(*i, (*i)->next);
+	while (current) {
+		if (white_tag ==  current->colour) {
+			mem_block *tofree = current;
+			*prev = current->next;
+			current = *prev;
 			
-			switch (mem_block_type(tofree)) {
+			switch (tofree->tag) {
 			case GC_TAB: {
-				tab *t = (tab *)i;
+				printf("Freeing Table\n");
+				tab *t = (tab *)tofree;
 				val_al_free(&t->al);
 				val_ht_free(&t->ht);
 				break;
 			} case GC_FUNC: {
-				func *f = (func *)i;
+				printf("Freeing Func\n");
+				func *f = (func *)tofree;
 				val_al_free(&f->upvals);
 				// env will free itself
 				// func_def will free itself
 				break;
 			} case GC_FUNCDEF: {
-				func_def *d = (func_def *)i;
+				printf("Freeing Func def\n");
+				func_def *d = (func_def *)tofree;
 				inst_list_free(&d->ins);
 				val_al_free(&d->literals);
 				inst_lines_free(&d->lines);
@@ -44,36 +49,40 @@ void gc_sweep(mem_block **p, uint8_t white_tag) {
 			continue;
 		}
 
-		i = &((*i)->next);
+		prev = &current->next;
+		current = *prev;
 	}
 }
 
 void gc_val_mark(val *v, int black);
 void gc_func_def_mark(func_def *d, int black) {
-	if (mem_block_col(&d->link) == black) {
+	if (d->link.colour == black) {
 		return;
 	}
 	
 	for (int i = 0;i < d->literals.top;++i) {
 		gc_val_mark(&d->literals.items[i], black);
 	}
-	mem_block_coltag(&d->link, black);
+	d->link.colour = black;
 }
 void gc_tab_mark(tab *t, int black) {
-	if (mem_block_col(&t->link) == black) {
+	if (!t || t->link.colour == black) {
 		return;
 	}
+	puts("Marking tab");
 	
 	for (int i = 0;i < t->al.top;++i) {
 		gc_val_mark(&t->al.items[i], black);
 	}
-	for (int i = 0;i < RH_HASH_SIZE(t->ht.size);++i) {
-		if (t->ht.hash[i]) {
-			gc_val_mark(&t->ht.items[i].key, black);
-			gc_val_mark(&t->ht.items[i].value, black);
+	if (t->ht.items) {
+		for (int i = 0;i < RH_HASH_SIZE(t->ht.size);++i) {
+			if (t->ht.hash[i]) {
+				gc_val_mark(&t->ht.items[i].key, black);
+				gc_val_mark(&t->ht.items[i].value, black);
+			}
 		}
 	}
-	mem_block_coltag(&t->link, black);
+	t->link.colour = black;
 }
 void gc_val_mark(val *v, int black) {
 	switch (v->type) {
@@ -81,19 +90,25 @@ void gc_val_mark(val *v, int black) {
 		gc_tab_mark(v->tab, black);
 		break;
 	} case VAL_FUNC: {
-		if (mem_block_col(&v->func->link) == black) {
+		if (v->func->type == FUNC_C) {
+			v->func->link.colour = black;
 			return;
 		}
 		
+		if (v->func->link.colour == black) {
+			return;
+		}
+		puts("Marking func");
 		for (int i = 0;i < v->func->upvals.top;++i) {
 			gc_val_mark(&v->func->upvals.items[i], black);
 		}
 		gc_tab_mark(v->func->env, black);
 		gc_func_def_mark(v->func->def, black);
-		mem_block_coltag(&v->func->link, black);
+		v->func->link.colour = black;
 		break;
 	} case VAL_STR: {
-		mem_block_coltag(&v->str->link, black);
+				puts("Marking str");
+		v->str->link.colour = black;
 		break;
 	} default:
 		break;
