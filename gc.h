@@ -14,6 +14,7 @@ void gc_sweep(mem_block **p, uint8_t white_tag) {
 	mem_block *current = *p;
 
 	while (current) {
+		puts("Here");
 		if (white_tag ==  current->colour) {
 			mem_block *tofree = current;
 			*prev = current->next;

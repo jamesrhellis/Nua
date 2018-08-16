@@ -57,8 +57,10 @@ size_t gc_ins_max(inst ins) {
 		return ins.rout + ins.rina;
 	default:
 		switch (opcode_type[ins.op]) {
-		case OPT_RRR:
-			return ins.rina > ins.rinb ? ins.rina : ins.rinb;
+		case OPT_RRR: {
+			int max_in = ins.rina > ins.rinb ? ins.rina : ins.rinb;
+			return max_in > ins.rout ? max_in : ins.rout;
+			}
 		case OPT_RI: case OPT_RU:
 			return ins.reg;
 		case OPT_O: case OPT_N:
@@ -77,7 +79,7 @@ size_t gc_stack_top(thread *td) {
 		top_reg = f->func->def->max_reg;
 	}
 	printf("%ld, %ld", f->reg_base, top_reg);
-	return f->reg_base + top_reg;
+	return f->reg_base + top_reg + 1;
 }
 
 void gc_mark(global *g) {
@@ -176,12 +178,12 @@ int main(int argn, char **args) {
 		case OP_SETL:
 			switch (lit[ins.lit].type) {
 			case VAL_TAB:
-				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab), GC_TAB)};
+				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(&global_heap, sizeof(tab), GC_TAB)};
 				reg[ins.reg].tab->al = val_al_clone(&lit[ins.lit].tab->al);
 				reg[ins.reg].tab->ht = val_ht_clone(&lit[ins.lit].tab->ht);
 				break;
 			case VAL_FUNC:
-				reg[ins.reg] = (val) {VAL_FUNC, .func = gc_alloc(&g.gc_list, sizeof(func), GC_FUNC)};
+				reg[ins.reg] = (val) {VAL_FUNC, .func = gc_alloc(&global_heap, sizeof(func), GC_FUNC)};
 				reg[ins.reg].func->type = FUNC_NUA;
 				reg[ins.reg].func->def = lit[ins.lit].func->def;
 				break;
@@ -312,7 +314,7 @@ int main(int argn, char **args) {
 			reg[ins.rout] = reg[ins.rina];
 			break;
 		case OP_TAB:
-			reg[ins.rout] = (val) {VAL_TAB, .tab = gc_alloc(&g.gc_list, sizeof(tab), GC_TAB)};
+			reg[ins.rout] = (val) {VAL_TAB, .tab = gc_alloc(&global_heap, sizeof(tab), GC_TAB)};
 			val_ht_resize(&reg[ins.rout].tab->ht, ins.rina);
 			val_al_resize(&reg[ins.rout].tab->al, RH_HASH_SIZE(ins.rinb));
 			break;

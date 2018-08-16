@@ -4,6 +4,7 @@ i = 21
 local j = {1, i, nil}
 
 local k = function(a, b)
+	local gc = {}
 	return a + b
 end
 
