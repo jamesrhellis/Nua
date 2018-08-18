@@ -113,7 +113,7 @@ typedef enum opcode  { OP_NOP, OP_SETL, OP_SETI, OP_END, OP_COVER, OP_JMP, OP_NI
 char *opcode_str[OPCODE_NO] =
                      {"NOP","SETL","SETI","END","COVER","JMP","NIL","ADD","SUB","GT","GE","MOV", "TAB", "GTAB", "STAB", "PTAB", "CALL", "RET", "SENV", "GENV"};
 optype opcode_type[OPCODE_NO] = { OPT_N, OPT_RU, OPT_RI, OPT_N, OPT_RU, OPT_O, OPT_RU , OPT_RRR, OPT_RRR, OPT_RRR
-	, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR};
+	, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RRR, OPT_RU, OPT_RU};
 int op_retarget[OPCODE_NO] = {
 	[OP_SETL] = 1,
 	[OP_SETI] = 1,

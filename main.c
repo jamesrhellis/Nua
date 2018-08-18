@@ -347,10 +347,10 @@ int main(int argn, char **args) {
 			}
 			break;
 		case OP_SENV:
-			tab_set(env, reg[ins.rina], reg[ins.rinb]);
+			tab_set(env, lit[ins.lit], reg[ins.reg]);
 			break;
 		case OP_GENV:
-			reg[ins.rout] = tab_get(env, reg[ins.rina]);
+			reg[ins.reg] = tab_get(env, lit[ins.lit]);
 			break;
 		case OP_END:
 			printf("Register 0; ");

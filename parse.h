@@ -692,7 +692,7 @@ typedef struct assign {
 	uint8_t type;
 	union {
 		uint8_t rout;
-		uint8_t renv;
+		uint16_t renv;
 		struct {
 			uint8_t rtab;
 			uint8_t rkey;
@@ -727,11 +727,7 @@ int parse_assign(lexer *l, f_data *f) {
 			ass_al_push(&a, (assign) {ASS_LOCAL, i.rina});
 			break;
 		case OP_GENV:
-			if (!is_local(f, i.rina)) {
-				// Register reserved for the name of the global
-				reg = alloc_temp(f);
-			}
-			ass_al_push(&a, (assign) {ASS_ENV, .renv = i.rina});
+			ass_al_push(&a, (assign) {ASS_ENV, .renv = i.lit});
 			break;
 		case OP_GTAB:
 			// Key, Value and tab
@@ -815,10 +811,7 @@ int parse_assign(lexer *l, f_data *f) {
 
 		switch (as.type) {
 		case ASS_ENV:
-			if (!is_local(f, as.renv)) {
-				free_temp(f);
-			}
-			push_inst(l, f, (inst) {OP_SENV, .rina = as.renv , .rinb = r});
+			push_inst(l, f, (inst) {OP_SENV, .reg = r, .lit = as.renv});
 			break;
 		case ASS_TAB:
 			if (!is_local(f, as.rkey)) {
@@ -1160,18 +1153,12 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 		push_inst(l, f, (inst) {OP_NIL, reg, 0});
 		lex_next(l);
 		break;
-	case TOK_NUM:{
-//		double n = l->current.num;
-//		if (n == floor(n) && n >= -32768 && n <= 32767) {
-//			int16_t i = n;
-//			push_inst(l, f, (inst) {OP_SETI, ._reg = reg, .ilit = i});
-//		} else {
-			push_inst(l, f, (inst) {OP_SETL, reg
-				, alloc_literal(f, (val) {VAL_NUM, l->current.num})});
-//		}
+	case TOK_NUM:
+		push_inst(l, f, (inst) {OP_SETL, reg
+			, alloc_literal(f, (val) {VAL_NUM, l->current.num})});
 		lex_next(l);
 		break;
-	} case TOK_TABL:
+	case TOK_TABL:
 		if (parse_tab(l, f, reg)) {
 			log_error(l, f, "Error unable parse tab\n");
 			return 1;
@@ -1183,14 +1170,14 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local});
 		} else {
 			char *ident = lex_claim_lexme(l);
-			push_inst(l, f, (inst) {OP_SETL, reg, alloc_literal(f, (val) {VAL_STR,
-						.str = intern(&global_heap, &global_intern_map, (slice) {
-							.len = strlen(ident),
-							.str = ident })
-						})
-					});
+			int lit = alloc_literal(f, (val) {VAL_STR,
+				.str = intern(&global_heap, &global_intern_map, (slice) {
+					.len = strlen(ident),
+					.str = ident,
+				})
+			});
 			free(ident);
-			push_inst(l, f, (inst) {OP_GENV, .rout = reg, .rina = reg});
+			push_inst(l, f, (inst) {OP_GENV, .reg = reg, .lit = lit});
 		}
 		lex_next(l);
 		break;
