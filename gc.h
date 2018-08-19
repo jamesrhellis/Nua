@@ -14,7 +14,7 @@ void gc_sweep(mem_block **p, uint8_t white_tag) {
 	mem_block *current = *p;
 
 	while (current) {
-		puts("Here");
+		//puts("Here");
 		if (white_tag ==  current->colour) {
 			mem_block *tofree = current;
 			*prev = current->next;
@@ -22,20 +22,20 @@ void gc_sweep(mem_block **p, uint8_t white_tag) {
 			
 			switch (tofree->tag) {
 			case GC_TAB: {
-				printf("Freeing Table\n");
+				//printf("Freeing Table\n");
 				tab *t = (tab *)tofree;
 				val_al_free(&t->al);
 				val_ht_free(&t->ht);
 				break;
 			} case GC_FUNC: {
-				printf("Freeing Func\n");
+				//printf("Freeing Func\n");
 				func *f = (func *)tofree;
 				val_al_free(&f->upvals);
 				// env will free itself
 				// func_def will free itself
 				break;
 			} case GC_FUNCDEF: {
-				printf("Freeing Func def\n");
+				//printf("Freeing Func def\n");
 				func_def *d = (func_def *)tofree;
 				inst_list_free(&d->ins);
 				val_al_free(&d->literals);
@@ -70,7 +70,7 @@ void gc_tab_mark(tab *t, int black) {
 	if (!t || t->link.colour == black) {
 		return;
 	}
-	puts("Marking tab");
+	//puts("Marking tab");
 	
 	for (int i = 0;i < t->al.top;++i) {
 		gc_val_mark(&t->al.items[i], black);
@@ -99,7 +99,7 @@ void gc_val_mark(val *v, int black) {
 		if (v->func->link.colour == black) {
 			return;
 		}
-		puts("Marking func");
+		//puts("Marking func");
 		for (int i = 0;i < v->func->upvals.top;++i) {
 			gc_val_mark(&v->func->upvals.items[i], black);
 		}
@@ -108,7 +108,7 @@ void gc_val_mark(val *v, int black) {
 		v->func->link.colour = black;
 		break;
 	} case VAL_STR: {
-				puts("Marking str");
+		//puts("Marking str");
 		v->str->link.colour = black;
 		break;
 	} default:

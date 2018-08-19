@@ -1028,7 +1028,7 @@ int parse_tab(lexer *l, f_data *f, size_t reg) {
 		// Avoid unnessesary move instructions
 		if (inst_list_peek(&f->ins).op == OP_MOV) {
 			inst temp = inst_list_pop(&f->ins);
-			inst_list_push(&f->ins, (inst) { OP_PTAB, .rout = reg, .rina = temp.rout });
+			inst_list_push(&f->ins, (inst) { OP_PTAB, .rout = reg, .rina = temp.rina });
 		} else {
 			push_inst(l, f, (inst) {OP_PTAB, .rout = reg, .rina = temp});
 		}
