@@ -158,7 +158,7 @@ int main(int argn, char **args) {
 
 	while (true) {
 		inst ins = top->func->def->ins.items[top->ins];
-		print_inst(ins);
+		//print_inst(ins);
 		switch (ins.op) {
 		case OP_JMP:
 			top->ins += ins.off;

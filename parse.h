@@ -775,6 +775,7 @@ int parse_assign(lexer *l, f_data *f) {
 	}
 	
 	int inline_mov(f_data *f, int reg);
+	int claim_temps(f_data *f, inst ins, int reg);
 
 	int t = 0;
 	while (true) {
@@ -783,6 +784,7 @@ int parse_assign(lexer *l, f_data *f) {
 			inst ins = pop_inst(f);
 			if (op_retarget[ins.op] && !assign_op) {
 				ins.rout = a.items[t].rout;
+				reg = claim_temps(f, ins, reg);
 				inst_list_push(&locals, ins);
 			} else {
 				push_inst(l, f, ins);
@@ -806,7 +808,7 @@ int parse_assign(lexer *l, f_data *f) {
 		if (l->current.type == TOK_COM) {
 			lex_next(l);
 			if (parse_expr(l, f, reg)) {
-				log_error(l, f, "Expected an expression following comma\n");
+				log_error(l, f, "Expected an rexpression following comma\n");
 				return -1;
 			}
 		} else if (t < a.top) {
@@ -876,8 +878,28 @@ int parse_assign(lexer *l, f_data *f) {
 int inline_mov(f_data *f, int reg) {
 	inst *i = inst_list_rpeek(&f->ins);
 	if (i->op == OP_MOV) {
+		if (is_local(f, i->rina)) {
+			free_temp(f);
+		}
 		pop_inst(f);
 		return i->rina;
+	}
+	return reg;
+}
+int claim_temps(f_data *f, inst ins, int reg) {
+	switch (opcode_type[ins.op]) {
+	// Safe for all possible ops
+	case OPT_RRR:
+		if (!is_local(f, ins.rinb)) {
+			reg = alloc_temp(f);
+		}
+	case OPT_RR: // Fallthrough
+		if (!is_local(f, ins.rina)) {
+			reg = alloc_temp(f);
+		}
+		break;
+	default:
+		break;
 	}
 	return reg;
 }
@@ -901,6 +923,7 @@ int redirect(inst op, int redir_reg, inst_list ops) {
 				redir = 1;
 			}
 			ops.items[ops.top] = ins;
+			break;
 		default:
 			break;
 		}
@@ -911,19 +934,6 @@ int redirect(inst op, int redir_reg, inst_list ops) {
 
 int emit_bin_code(lexer *l, f_data *f, tokt op, size_t out, size_t left, size_t right) {
 	inst *i = inst_list_rpeek(&f->ins);
-	// Binary expression may be returned from a func with no prior instructions
-	if (i && i->op == OP_MOV) {
-		if (i->rout == right) {
-			right = i->rina;
-			pop_inst(f);
-		}
-		if ((--i)->op == OP_MOV) {
-			if (i->rout == left) {
-				left = i->rina;
-				pop_inst(f);
-			}
-		}
-	}
 
 	switch (op) {
 	case TOK_ADD:
