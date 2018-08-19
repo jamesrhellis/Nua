@@ -57,11 +57,11 @@ size_t gc_ins_max(inst ins) {
 		return ins.rout + ins.rina;
 	default:
 		switch (opcode_type[ins.op]) {
-		case OPT_RRR: {
+		case OPT_RRR: case OPT_RR: case OPT_R: {
 			int max_in = ins.rina > ins.rinb ? ins.rina : ins.rinb;
 			return max_in > ins.rout ? max_in : ins.rout;
 			}
-		case OPT_RI: case OPT_RU:
+		case OPT_RU:
 			return ins.reg;
 		case OPT_O: case OPT_N:
 			return 256;
@@ -171,9 +171,6 @@ int main(int argn, char **args) {
 			break;
 		case OP_NIL:
 			reg[ins.reg] = (val) {VAL_NIL};
-			break;
-		case OP_SETI:
-			reg[ins.reg] = (val) {VAL_NUM, .num = ins.ilit};
 			break;
 		case OP_SETL:
 			switch (lit[ins.lit].type) {

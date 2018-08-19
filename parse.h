@@ -425,7 +425,8 @@ void push_inst(lexer *l, f_data *f, inst i) {
 	inst_lines_push(&f->lines, l->line+1);
 }
 
-inst pop_inst(lexer *l, f_data *f) {
+inst pop_inst(f_data *f) {
+	inst_lines_pop(&f->lines);
 	return inst_list_pop(&f->ins);
 }
 
@@ -701,7 +702,7 @@ typedef struct assign {
 } assign;
 RH_AL_MAKE(ass_al, assign)
 
-			void print_inst(inst i);
+int emit_bin_code(lexer *l, f_data *f, tokt op, size_t out, size_t left, size_t right);
 int parse_assign(lexer *l, f_data *f) {
 	if (l->current.type != TOK_IDENT) {
 		return 1;
@@ -718,10 +719,20 @@ int parse_assign(lexer *l, f_data *f) {
 		free_temp(f);
 		return 0;
 	}
-
+	
 	ass_al a = {0};
-	while (true) {
-		inst i = pop_inst(l, f);
+	goto SKIP_PARSE_EXPRESSION;
+	
+	while (l->current.type == TOK_COM) {
+		lex_next(l);		
+		if (parse_pexpr(l, f, reg)) {
+			log_error(l, f ,"Error invalid target to assign\n");
+			return -1;
+		}
+		
+		SKIP_PARSE_EXPRESSION:;
+		
+		inst i = pop_inst(f);
 		switch (i.op) {
 		case OP_MOV:
 			ass_al_push(&a, (assign) {ASS_LOCAL, i.rina});
@@ -743,124 +754,159 @@ int parse_assign(lexer *l, f_data *f) {
 			break;
 		default:
 			log_error(l, f, "Error non-assignable primary expression in assignment\n");
-			print_inst(i);
 			return -1;
 		}
+	}
+	
+	int assign_op = 0;
 
+	if (l->current.type != TOK_ASSIGN) {
+		log_error(l, f, "Expected assignment operator\n");
+		return -1;
+	}
+	lex_next(l);
+
+	inst_list locals = {0};
+	inst_list tabs_envs = {0};
+	
+	if (parse_expr(l, f, reg)) {
+		log_error(l, f, "Error no rexpression\n");
+		return -1;
+	}
+	
+	int inline_mov(f_data *f, int reg);
+
+	int t = 0;
+	while (true) {
+		switch (a.items[t].type) {
+		case ASS_LOCAL: {
+			inst ins = pop_inst(f);
+			if (op_retarget[ins.op] && !assign_op) {
+				ins.rout = a.items[t].rout;
+				inst_list_push(&locals, ins);
+			} else {
+				push_inst(l, f, ins);
+				inst_list_push(&locals, (inst) {OP_MOV, .rout = a.items[t].rout, .rina = reg});
+				reg = alloc_temp(f);
+			}
+			break;
+		} case ASS_ENV:
+			inst_list_push(&tabs_envs, (inst) { OP_SENV, .reg = inline_mov(f, reg), .lit = a.items[t].renv});
+			reg = alloc_temp(f);
+			break;
+		case ASS_TAB:
+			inst_list_push(&tabs_envs, (inst) { OP_STAB, .rout = a.items[t].rtab,
+				.rina = a.items[t].rkey, .rinb = inline_mov(f, reg)});
+			reg = alloc_temp(f);
+			break;
+		}
+		
+		++t;
+		
 		if (l->current.type == TOK_COM) {
-			lex_next(l);		
-			if (parse_pexpr(l, f, reg)) {
-				log_error(l, f ,"Error invalid target to assign\n");
+			lex_next(l);
+			if (parse_expr(l, f, reg)) {
+				log_error(l, f, "Expected an expression following comma\n");
 				return -1;
 			}
+		} else if (t < a.top) {
+			inst *i = inst_list_rpeek(&f->ins);
+			if (i->op != OP_CALL) {
+				log_error(l, f, "Insufficent rexpressions to assign \n");
+				return -1;
+			}
+			// Func must return one more
+			++i->rina;
+			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = reg});
 		} else {
 			break;
 		}
 	}
 
-	if (!a.items) {
-		log_error(l, f ,"Error no targets to assign\n");
-		return -1;
-	}
-
-	if (l->current.type != TOK_ASSIGN) {
-		log_error(l, f, "Error no assignment\n");
-		return -1;
-	}
-	lex_next(l);
-
-	size_t t = 1;
-	size_t ins_base = f->ins.top;
-
-	if (parse_expr(l, f, reg)) {
-		log_error(l, f, "Error no rexpression\n");
-		return -1;
-	}
-
-	while (l->current.type == TOK_COM) {
-		reg = alloc_temp(f);
-
-		lex_next(l);
-		if (t++ >= a.top || parse_expr(l, f, reg)) {
-			log_error(l, f, "Excess no of expressions\n");
-			return -1;
+	if (assign_op) {
+		// TODO - emmit assignment operator code here
+		for (int i = 0;i < locals.top;++i) {
+			// Guarenteed to be a move instruction
+			inst ins = locals.items[i];
+			emit_bin_code(l, f, assign_op, ins.rout, ins.rout, ins.rina);
+			ins = pop_inst(f);
+			locals.items[i] = ins;
+		}
+		
+		for (int i = 0;i < tabs_envs.top;++i) {
+			inst ins = tabs_envs.items[i];
+			switch (ins.op) {
+			case OP_STAB:
+				// Reg is still availible for computation
+				push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = ins.rout, .rinb = ins.rina});
+				emit_bin_code(l, f, assign_op, ins.rinb, ins.rinb, reg);
+			case OP_SENV:
+				push_inst(l, f, (inst) {OP_GENV, .reg = reg, .lit = ins.lit});
+				emit_bin_code(l, f, assign_op, ins.reg, ins.reg, reg);
+			default:
+				log_error(l, f, "Internal Error: Unexpected instruction in tab/env assignment\n");
+				return -1;
+			}
 		}
 	}
+	
 
-	if (t < a.top) {
-		inst *i = inst_list_rpeek(&f->ins) - 1;
-		if (i->op != OP_CALL && (--i)->op != OP_CALL) {
-			log_error(l, f, "Lack of values to assign \n");
-			return -1;
-		}
-
-		i->rinb += a.top - t;
-		// FIXME need to make work with the following code
-		// Un-needed allocation to simplify code at end
-		for (int j = 1;j < i->rinb;++j) {
-			alloc_temp(f);
-		}
-	}
-
+	int redirect(inst op, int redir_reg, inst_list ops);
+	
 	// Free all temps used for tab indexing
-	int read[256] = {0};
-	size_t ins = f->ins.top - 1;
-	for (int i = a.top-1;i >= 0;--i) {
-		assign as = a.items[i];
-		int r = reg - (a.top - i) + 1;
+	inst ins;
+	while ((ins = inst_list_pop(&locals)).op) {
+		if (redirect(ins, reg,  locals) || redirect(ins, reg, tabs_envs)) {
+			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = ins.rout});
+			reg = alloc_temp(f);
+		}
+		push_inst(l, f, ins);
+	}
+	
+	while ((ins = inst_list_pop(&tabs_envs)).op) {
+		push_inst(l, f, ins);
+	}
 
-		switch (as.type) {
-		case ASS_ENV:
-			push_inst(l, f, (inst) {OP_SENV, .reg = r, .lit = as.renv});
-			break;
-		case ASS_TAB:
-			if (!is_local(f, as.rkey)) {
-				free_temp(f);
-			}
-			if (!is_local(f, as.rtab)) {
-				free_temp(f);
-			}
-			push_inst(l, f, (inst) {OP_STAB, .rout = as.rtab, .rina = as.rkey , .rinb = r});
-			break;
-		case ASS_LOCAL:
-			while(!read[as.rout] && ins > ins_base) {
-				inst in = f->ins.items[ins];
 
-				switch (opcode_type[in.op]) {
-				case OPT_RU:
-				case OPT_RI:
-					if (in.reg == r) {
-						goto EXIT_LOOP;
-					}
-					break;
-				case OPT_RRR:
-					if (in.rout == r) {
-						goto EXIT_LOOP;
-					}
-					read[in.rina] = 1;
-					read[in.rinb] = 1;
-					break;
-				default:
-					break;
-				}
-				--ins;
+	// FIXME - may be hiding temp allocation bugs
+	f->temp = 0;
+
+	return 0;
+}
+int inline_mov(f_data *f, int reg) {
+	inst *i = inst_list_rpeek(&f->ins);
+	if (i->op == OP_MOV) {
+		pop_inst(f);
+		return i->rina;
+	}
+	return reg;
+}
+int redirect(inst op, int redir_reg, inst_list ops) {
+	int reg = op.rout;
+	int redir = 0;
+	inst ins;
+	// Local copy safe to iterate with pops
+	while ((ins = inst_list_pop(&ops)).op) {
+		// Not safe for call/ret, but safe for 
+		// all redirectable ops
+		switch (opcode_type[ins.op]) {
+		case OPT_RRR:
+			if (ins.rinb == reg) {
+				ins.rinb = redir_reg;
+				redir = 1;
 			}
-			EXIT_LOOP:
-			if (read[as.rout] || !op_retarget[f->ins.items[ins].op]) {
-				push_inst(l, f, (inst) {OP_MOV, .rout = as.rout, .rina = r});
-			} else {
-				f->ins.items[ins].rout = as.rout;
+		case OPT_RR: // Fallthrough
+			if (ins.rina == reg) {
+				ins.rina = redir_reg;
+				redir = 1;
 			}
-			break;
+			ops.items[ops.top] = ins;
 		default:
 			break;
 		}
-		free_temp(f);
 	}
 	
-	assert(f->temp == 0);
-
-	return 0;
+	return redir;
 }
 
 int emit_bin_code(lexer *l, f_data *f, tokt op, size_t out, size_t left, size_t right) {
@@ -869,12 +915,12 @@ int emit_bin_code(lexer *l, f_data *f, tokt op, size_t out, size_t left, size_t 
 	if (i && i->op == OP_MOV) {
 		if (i->rout == right) {
 			right = i->rina;
-			pop_inst(l, f);
+			pop_inst(f);
 		}
 		if ((--i)->op == OP_MOV) {
 			if (i->rout == left) {
 				left = i->rina;
-				pop_inst(l, f);
+				pop_inst(f);
 			}
 		}
 	}
@@ -934,7 +980,7 @@ int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 
 	inst i = inst_list_peek(&f->ins);
 	if (i.op == OP_MOV && (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence)) {
-		pop_inst(l, f);
+		pop_inst(f);
 		left = i.rina;
 	}
 
@@ -949,7 +995,7 @@ int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 
 		inst i = inst_list_peek(&f->ins);
 		if (i.op == OP_MOV) {
-			pop_inst(l, f);
+			pop_inst(f);
 			right = i.rina;
 		}
 		emit_bin_code(l, f, op, out, left, right);
