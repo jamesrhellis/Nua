@@ -135,8 +135,7 @@ int main(int argn, char **args) {
 			t.stack.items[i] = (val) { VAL_NIL };
 		}
 		tab *env = gc_alloc(&global_heap, sizeof(tab), GC_TAB);
-		frame_stack_push(&t.func, (frame) {.func = base, .env = env, .reg_base = 1});
-		val_al_push(&t.stack, (val) {VAL_FUNC, .func = base});
+		frame_stack_push(&t.func, (frame) {.func = base, .env = env, .reg_base = 0});
 
 		thread_list_push(&g.threads, t);
 	}
