@@ -19,20 +19,11 @@ typedef struct frame {
 
 RH_AL_MAKE(frame_stack, frame)
 
-typedef struct thread {
-	frame_stack func;
-	val_al stack;
-
-	// Mem management
-	size_t min_stack;	// Lowest pos used since last gc
-} thread;
-
-RH_AL_MAKE(thread_list, thread)
 
 typedef struct global {
-	// Control
-	thread_list threads;
-
+	frame_stack func;
+	val_al stack;
+	
 	// Mem management
 	size_t white;		// Current val of white tag (0, 1)
 	mem_block *gc_list;	// All objects
@@ -49,31 +40,27 @@ int nua_print_val(int no_args, val *stack) {
 }
 
 
-size_t gc_stack_top(thread *td) {
-	frame *f = frame_stack_rpeek(&td->func);
+size_t gc_stack_top(global *g) {
+	frame *f = frame_stack_rpeek(&g->func);
 	size_t top_reg = f->func->def->gc_height.items[f->ins];
 	
 	//printf("%ld, %ld", f->reg_base, top_reg);
-	return f->reg_base + top_reg + 1;
+	return f->reg_base + top_reg;
 }
 
 void gc_mark(global *g) {
 	g->white = !g->white;
 	int white = g->white;
 	
-	for (int t = 0;t < g->threads.top;++t) {
-		thread *td = &g->threads.items[t];
-		
-		// FIXME get real top from instruction
-		for (int i = 0;i < gc_stack_top(td);++i) {
-			//printf("; %ld, i%d\n", gc_stack_top(td), i);
-			gc_val_mark(&td->stack.items[i], !white);
-		}
-		
-		// Functions should be marked on the stack
-		for (int i = 0;i < td->func.top;++i) {
-			gc_tab_mark(td->func.items[i].env, !white);
-		}
+	// FIXME get real top from instruction
+	for (int i = 0;i < gc_stack_top(g);++i) {
+		//printf("; %ld, i%d\n", gc_stack_top(g), i);
+		gc_val_mark(&g->stack.items[i], !white);
+	}
+	
+	// Functions should be marked on the stack
+	for (int i = 0;i < g->func.top;++i) {
+		gc_tab_mark(g->func.items[i].env, !white);
 	}
 }
 
@@ -104,21 +91,17 @@ int main(int argn, char **args) {
 
 	print_func_def(*base->def);
 
-	global g = {0}; {
-		thread t = {.stack = val_al_new(256), .func = frame_stack_new(8)};
-		for (int i = 0; i < t.stack.size;++i) {
-			t.stack.items[i] = (val) { VAL_NIL };
+	global g = {.stack = val_al_new(256), .func = frame_stack_new(8)}; {
+		for (int i = 0; i < g.stack.size;++i) {
+			g.stack.items[i] = (val) { VAL_NIL };
 		}
 		tab *env = gc_alloc(&global_heap, sizeof(tab), GC_TAB);
-		frame_stack_push(&t.func, (frame) {.func = base, .env = env, .reg_base = 0});
-
-		thread_list_push(&g.threads, t);
+		frame_stack_push(&g.func, (frame) {.func = base, .env = env, .reg_base = 0});
 	}
 
-	thread *t = &g.threads.items[0];
-	frame *top = frame_stack_rpeek(&t->func);
+	frame *top = frame_stack_rpeek(&g.func);
 
-	val *reg = &t->stack.items[top->reg_base];
+	val *reg = &g.stack.items[top->reg_base];
 	val *lit = top->func->def->literals.items;
 	tab *env = top->env;
 	
@@ -173,17 +156,17 @@ int main(int argn, char **args) {
 			// .rout = func register, and base of func args - 1, base of return vals
 			// .rina = no args, call has to pad with nils
 			// .rinb = no return vals, return has to pad with nils
-			frame_stack_push(&t->func, (frame) {.func = reg[ins.rout].func, .reg_base = &reg[ins.rout+1] - t->stack.items});
+			frame_stack_push(&g.func, (frame) {.func = reg[ins.rout].func, .reg_base = &reg[ins.rout+1] - g.stack.items});
 			switch (reg[ins.rout].func->type) {
 			case FUNC_NUA: {
 
-				size_t max = t->stack.top + reg[ins.rout].func->def->max_reg;
+				size_t max = g.stack.top + reg[ins.rout].func->def->max_reg;
 
-				if (max >= t->stack.size) {
-					size_t old = t->stack.size, new = t->stack.size * 2;
-					val_al_resize(&t->stack, new);
+				if (max >= g.stack.size) {
+					size_t old = g.stack.size, new = g.stack.size * 2;
+					val_al_resize(&g.stack, new);
 					for (size_t i = old;i < new;++i) {
-						t->stack.items[i] = (val) { VAL_NIL };
+						g.stack.items[i] = (val) { VAL_NIL };
 					}
 				}
 
@@ -191,9 +174,9 @@ int main(int argn, char **args) {
 					reg[ins.rout + i] = (val) { VAL_NIL };
 				}
 
-				top = frame_stack_rpeek(&t->func);
+				top = frame_stack_rpeek(&g.func);
 
-				reg = &t->stack.items[top->reg_base];
+				reg = &g.stack.items[top->reg_base];
 				lit = top->func->def->literals.items;
 				if (top->func->env) {
 					env = top->env = top->func->env;
@@ -202,15 +185,15 @@ int main(int argn, char **args) {
 				}
 			} break;
 			case FUNC_C: {	
-				top = frame_stack_rpeek(&t->func);
-				int no_ret = reg[ins.rout].func->c_func(ins.rina, &t->stack.items[top->reg_base]);
+				top = frame_stack_rpeek(&g.func);
+				int no_ret = reg[ins.rout].func->c_func(ins.rina, &g.stack.items[top->reg_base]);
 				
 				for (int i = no_ret;i < ins.rinb;++i) {
 					reg[ins.rout + i] = (val) { VAL_NIL };
 				}
 				
-				frame_stack_pop(&t->func);
-				top = frame_stack_rpeek(&t->func);
+				frame_stack_pop(&g.func);
+				top = frame_stack_rpeek(&g.func);
 				
 				top->ins++;
 			} break;
@@ -224,7 +207,7 @@ int main(int argn, char **args) {
 			// OP is interpreted
 			// .rina = base register
 			// .rout = no values to return
-			frame_stack_pop(&t->func);
+			frame_stack_pop(&g.func);
 			size_t no_ret = ins.rout;
 
 			reg -= 1;
@@ -233,9 +216,9 @@ int main(int argn, char **args) {
 				reg[i] = reg[ins.rina + i + 1];
 			}
 
-			top = frame_stack_rpeek(&t->func);
+			top = frame_stack_rpeek(&g.func);
 
-			reg = &t->stack.items[top->reg_base];
+			reg = &g.stack.items[top->reg_base];
 			lit = top->func->def->literals.items;
 
 			ins = top->func->def->ins.items[top->ins];
