@@ -1,5 +1,5 @@
-#ifndef GC_TYPES_H
-#define GC_TYPES_H
+#ifndef NUA_GC_TYPES_H
+#define NUA_GC_TYPES_H
 
 typedef struct mem_block {
 	struct mem_block *next;

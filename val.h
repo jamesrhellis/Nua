@@ -1,5 +1,5 @@
-#ifndef VAL_H
-#define VAL_H
+#ifndef NUA_VAL_H
+#define NUA_VAL_H
 
 #include "intern.h"
 #include "gc_types.h"

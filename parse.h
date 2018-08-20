@@ -1,5 +1,5 @@
-#ifndef PARSE_H
-#define PARSE_H
+#ifndef NUA_PARSE_H
+#define NUA_PARSE_H
 
 #include <stdio.h>
 #include <errno.h>

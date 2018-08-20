@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <math.h>
 
-#include "gen/rh_hash.h"
 #include "gen/rh_al.h"
 
 #include "gc.h"
@@ -37,7 +36,6 @@ typedef struct global {
 	// Mem management
 	size_t white;		// Current val of white tag (0, 1)
 	mem_block *gc_list;	// All objects
-	mem_grey_link *gc_grey;	// Incrementally processed objects
 } global;
 
 int nua_print_val(int no_args, val *stack) {

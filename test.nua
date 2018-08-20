@@ -19,6 +19,6 @@ while i > 23 do
 	i = i - 1
 end
 
-i = k(32 ,i)
+i = k(32, i)
 
 print(i)

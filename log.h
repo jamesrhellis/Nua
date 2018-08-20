@@ -1,5 +1,5 @@
-#ifndef LOG_H
-#define LOG_H
+#ifndef NUA_LOG_H
+#define NUA_LOG_H
 
 #include "gen/rh_al.h"
 

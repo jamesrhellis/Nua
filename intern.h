@@ -1,5 +1,5 @@
-#ifndef INTERN_H
-#define INTERN_H
+#ifndef NUA_INTERN_H
+#define NUA_INTERN_H
 
 #include "gen/rh_hash.h"
 

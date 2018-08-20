@@ -1,5 +1,5 @@
-#ifndef GC_H
-#define GC_H
+#ifndef NUA_GC_H
+#define NUA_GC_H
 
 #include "val.h"
 #include "gc_types.h"
