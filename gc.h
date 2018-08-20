@@ -30,7 +30,6 @@ void gc_sweep(mem_block **p, uint8_t white_tag) {
 			} case GC_FUNC: {
 				//printf("Freeing Func\n");
 				func *f = (func *)tofree;
-				val_al_free(&f->upvals);
 				// env will free itself
 				// func_def will free itself
 				break;
@@ -100,9 +99,6 @@ void gc_val_mark(val *v, int black) {
 			return;
 		}
 		//puts("Marking func");
-		for (int i = 0;i < v->func->upvals.top;++i) {
-			gc_val_mark(&v->func->upvals.items[i], black);
-		}
 		gc_tab_mark(v->func->env, black);
 		gc_func_def_mark(v->func->def, black);
 		v->func->link.colour = black;

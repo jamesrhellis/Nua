@@ -179,7 +179,6 @@ typedef struct func {
 	funct type;
 	union {
 		struct {
-			val_al upvals;
 			tab *env;
 
 			func_def *def;
