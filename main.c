@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <math.h>
 
-#include "gen/rh_tp.h"
 #include "gen/rh_hash.h"
 #include "gen/rh_al.h"
 
@@ -134,7 +133,7 @@ int main(int argn, char **args) {
 		.str = "print"})}, 
 		(val){VAL_FUNC, .func = print});
 
-	while (true) {
+	while (1) {
 		inst ins = top->func->def->ins.items[top->ins];
 		//print_inst(ins);
 		switch (ins.op) {

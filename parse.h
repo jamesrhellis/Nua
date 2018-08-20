@@ -782,7 +782,7 @@ int parse_assign(lexer *l, f_data *f) {
 	int claim_temps(f_data *f, inst ins, int reg);
 
 	int t = 0;
-	while (true) {
+	while (1) {
 		switch (a.items[t].type) {
 		case ASS_LOCAL: {
 			inst ins = pop_inst(f);
