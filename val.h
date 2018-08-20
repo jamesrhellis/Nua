@@ -169,6 +169,7 @@ typedef struct func_def {
 	// Debug data
 	const char *file;
 	inst_lines lines;
+	inst_lines gc_height;
 } func_def;
 
 typedef enum funct { FUNC_ERR, FUNC_NUA, FUNC_C } funct;
@@ -229,7 +230,7 @@ int print_func_def(func_def f) {
 	printf("Func def; [%s;%d,%d] (%zu ins)\n", f.file, f.lines.items[0], inst_lines_peek(&f.lines), f.ins.top);
 	printf("%d params, %d registers, %d up\n", f.no_args, f.max_reg, 0);
 	for (size_t i = 0;i < f.ins.top;++i) {
-		printf("%zu\t\b\b\b%d |\t\b\b\b", i, f.lines.items[i]);
+		printf("%zu\t\b\b\b%d; %d |\t\b\b\b", i, f.lines.items[i], f.gc_height.items[i]);
 		print_inst(f.ins.items[i]);
 	}
 	print_literals(f);

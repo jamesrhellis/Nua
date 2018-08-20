@@ -51,33 +51,11 @@ int nua_print_val(int no_args, val *stack) {
 	return 0;
 }
 
-size_t gc_ins_max(inst ins) {
-	switch (ins.op) {
-	case OP_CALL: case OP_RET:
-		return ins.rout + ins.rina;
-	default:
-		switch (opcode_type[ins.op]) {
-		case OPT_RRR: case OPT_RR: case OPT_R: {
-			int max_in = ins.rina > ins.rinb ? ins.rina : ins.rinb;
-			return max_in > ins.rout ? max_in : ins.rout;
-			}
-		case OPT_RU:
-			return ins.reg;
-		case OPT_O: case OPT_N:
-			return 256;
-		}
-	}
-	
-	// Should never be reached
-	return 256;
-}
 
 size_t gc_stack_top(thread *td) {
 	frame *f = frame_stack_rpeek(&td->func);
-	size_t top_reg = gc_ins_max(f->func->def->ins.items[f->ins]);
-	if (top_reg > f->func->def->max_reg) {
-		top_reg = f->func->def->max_reg;
-	}
+	size_t top_reg = f->func->def->gc_height.items[f->ins];
+	
 	//printf("%ld, %ld", f->reg_base, top_reg);
 	return f->reg_base + top_reg + 1;
 }

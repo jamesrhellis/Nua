@@ -327,6 +327,7 @@ typedef struct {
 	//Instructions and debug
 	inst_list ins;
 	inst_lines lines;
+	inst_lines gc_height;
 
 	//Literals
 	val_al literals;
@@ -423,10 +424,12 @@ static inline int is_local(f_data *f, uint8_t reg) {
 void push_inst(lexer *l, f_data *f, inst i) {
 	inst_list_push(&f->ins, i);
 	inst_lines_push(&f->lines, l->line+1);
+	inst_lines_push(&f->gc_height, f->reg + f->temp);
 }
 
 inst pop_inst(f_data *f) {
 	inst_lines_pop(&f->lines);
+	inst_lines_pop(&f->gc_height);
 	return inst_list_pop(&f->ins);
 }
 
@@ -458,6 +461,7 @@ int parse(lexer l, func_def *f) {
 	f->ins = fd.ins;
 	f->max_reg = fd.max_reg;
 	f->lines = fd.lines;
+	f->gc_height = fd.gc_height;
 	f->literals = fd.literals;
 	f->file = l.file;
 
@@ -878,9 +882,6 @@ int parse_assign(lexer *l, f_data *f) {
 int inline_mov(f_data *f, int reg) {
 	inst *i = inst_list_rpeek(&f->ins);
 	if (i->op == OP_MOV) {
-		if (is_local(f, i->rina)) {
-			free_temp(f);
-		}
 		pop_inst(f);
 		return i->rina;
 	}
@@ -987,7 +988,7 @@ int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 	if (parse_pexpr(l, f, left)) {
 		return 1;
 	}
-
+	
 	inst i = inst_list_peek(&f->ins);
 	if (i.op == OP_MOV && (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence)) {
 		pop_inst(f);
@@ -1003,24 +1004,12 @@ int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 
 		parse_bin_expr(l, f, right, bin_prec(op)+bin_assoc(op));
 
-		inst i = inst_list_peek(&f->ins);
-		if (i.op == OP_MOV) {
-			pop_inst(f);
-			right = i.rina;
-		}
+		right = inline_mov(f, right);
+		
 		emit_bin_code(l, f, op, out, left, right);
 	}
 
 	free_temp(f);
-
-	/*
-	// Fix the final instruction to output to out
-	if (inst_list_rpeek(&f->ins)->op != OP_CALL) {
-		inst_list_rpeek(&f->ins)->rout = out;
-	} else {
-		push_inst(l, f, (inst) {OP_MOV, .rout = out, .rina = inst_list_rpeek(&f->ins)->rout});
-	}
-	*/
 
 	return 0;
 }
@@ -1036,12 +1025,7 @@ int parse_tab(lexer *l, f_data *f, size_t reg) {
 	size_t temp = alloc_temp(f);
 	while (!parse_expr(l, f, temp)) {
 		// Avoid unnessesary move instructions
-		if (inst_list_peek(&f->ins).op == OP_MOV) {
-			inst temp = inst_list_pop(&f->ins);
-			inst_list_push(&f->ins, (inst) { OP_PTAB, .rout = reg, .rina = temp.rina });
-		} else {
-			push_inst(l, f, (inst) {OP_PTAB, .rout = reg, .rina = temp});
-		}
+		push_inst(l, f, (inst) {OP_PTAB, .rout = reg, .rina = inline_mov(f, temp)});
 
 		if (l->current.type != TOK_COM) {
 			if (l->current.type != TOK_TABR) {
@@ -1189,6 +1173,7 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	fun_def->max_reg = fd.max_reg;
 	fun_def->no_args = no_args;
 	fun_def->lines = fd.lines;
+	fun_def->gc_height = fd.gc_height;
 	fun_def->literals = fd.literals;
 
 	fun_def->file = l->file;
