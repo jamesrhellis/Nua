@@ -1110,6 +1110,9 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 		}
 
 		free_temp(f);
+		
+		push_inst(l, f, (inst) {OP_CALL, .rout = f_reg, .rina = no_args, .rinb = 1});
+		
 		for (int i = 0;i < no_args;++i) {
 			free_temp(f);
 		}
@@ -1119,7 +1122,7 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 		}
 		lex_next(l);
 
-		push_inst(l, f, (inst) {OP_CALL, .rout = f_reg, .rina = no_args, .rinb = 1});
+
 
 		break;
 	}default:
