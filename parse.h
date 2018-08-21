@@ -1,5 +1,5 @@
-#ifndef NUA_PARSE_H
-#define NUA_PARSE_H
+#ifndef PARSE_H
+#define PARSE_H
 
 #include <stdio.h>
 #include <errno.h>
@@ -1005,8 +1005,12 @@ int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
 		parse_bin_expr(l, f, right, bin_prec(op)+bin_assoc(op));
 
 		right = inline_mov(f, right);
+		if (is_local(f, right)) {
+			free_temp(f);
+		}
 		
 		emit_bin_code(l, f, op, out, left, right);
+		right = alloc_temp(f);
 	}
 
 	free_temp(f);
