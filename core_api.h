@@ -203,8 +203,6 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 		case OP_GENV:
 			reg[ins.reg] = tab_get(env, lit[ins.lit]);
 			break;
-		case OP_END:
-			return 0;
 		default:
 			break;
 		}

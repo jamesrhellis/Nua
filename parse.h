@@ -457,7 +457,7 @@ int parse(lexer l, func_def *f) {
 
 	free(fd.scopes.items);
 
-	push_inst(&l, &fd, (inst) {OP_END});
+	push_inst(&l, &fd, (inst) {OP_RET});
 	f->ins = fd.ins;
 	f->max_reg = fd.max_reg;
 	f->lines = fd.lines;
