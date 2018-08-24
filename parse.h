@@ -302,6 +302,7 @@ int lex_next(lexer *l) {
 	}
 
 	l->current = __lex_next(l);
+	printf("%ld, %ld\n", l->line, l->pos - l->lstart);
 	return l->current.type != TOK_EOI;
 }
 
@@ -433,13 +434,33 @@ inst pop_inst(f_data *f) {
 	return inst_list_pop(&f->ins);
 }
 
+int free_if_temp(f_data *f, int reg) {
+	if (reg >= f->reg) {
+		free_temp(f);
+	}
+	return reg;
+}
+
+int top(f_data *f) {
+	return f->reg + f->temp - 1;
+}
+
+int top_or_local(f_data *f) {
+	inst *i = inst_list_rpeek(&f->ins);
+	if (i->op == OP_MOV && i->rina < f->reg) {
+		free_temp(f);
+		pop_inst(f);
+		return i->rina;
+	}
+	return top(f);
+}
 
 int parse_code(lexer *l, f_data *f);
 int parse_local(lexer *l, f_data *f);
 int parse_assign(lexer *l, f_data *f);
-int parse_expr(lexer *l, f_data *f, size_t reg);
-int parse_bin_expr(lexer *l, f_data *f, size_t left, size_t precedence);
-int parse_pexpr(lexer *l, f_data *f, size_t reg);
+int parse_expr(lexer *l, f_data *f);
+int parse_bin_expr(lexer *l, f_data *f, int precedence);
+int parse_pexpr(lexer *l, f_data *f);
 int parse_if(lexer *l, f_data *f);
 int parse_ret(lexer *l, f_data *f);
 int parse_while(lexer *l, f_data *f);
@@ -498,23 +519,24 @@ int parse_while(lexer *l, f_data *f) {
 		return 1;
 	}
 	add_scope(f);
-
 	lex_next(l);
-	size_t reg = alloc_temp(f);
+	
 	size_t start = f->ins.top;
-	int err = parse_expr(l, f, reg);
-	if (err) {
+	if (parse_expr(l, f)) {
 		return -1;
 	}
+	int condition = top_or_local(f);
+	
 	if (l->current.type != TOK_DO) {
 		return -1;
 	}
 	lex_next(l);
 
-	push_inst(l, f, (inst) {OP_COVER, reg});
+	free_if_temp(f, condition);
+	push_inst(l, f, (inst) {OP_COVER, condition});
+
 	size_t jmp_from = f->ins.top;
 	push_inst(l, f, (inst) {OP_JMP});
-	free_temp(f);
 
 	parse_code(l, f);
 	push_inst(l, f, (inst) {OP_JMP, .off = start - f->ins.top });
@@ -536,36 +558,38 @@ int parse_if(lexer *l, f_data *f) {
 	}
 
 	add_scope(f);
-
 	lex_next(l);
-	size_t reg = alloc_temp(f);
-	int err = parse_expr(l, f, reg);
-	if (err) {
+	
+	if (parse_expr(l, f)) {
 		return -1;
 	}
+	int condition = top_or_local(f);
+	
 	if (l->current.type != TOK_THEN) {
 		return -1;
 	}
 	lex_next(l);
 
-	push_inst(l, f, (inst) {OP_COVER, reg});
-	size_t start = f->ins.top;
+	free_if_temp(f, condition);
+	push_inst(l, f, (inst) {OP_COVER, condition});
+	
+	size_t if_start = f->ins.top;
 	push_inst(l, f, (inst) {OP_JMP});
-	free_temp(f);
 
 	parse_code(l, f);
-	f->ins.items[start].off = f->ins.top - start;
+	f->ins.items[if_start].off = f->ins.top - if_start;
 
 	if (l->current.type == TOK_ELSE) {
-		// Jump past exit jump added here
-		f->ins.items[start].off += 1;
-
-		size_t start = f->ins.top;
-		push_inst(l, f, (inst) {OP_JMP});
 		lex_next(l);
+		
+		// Jump past exit jump added here
+		f->ins.items[if_start].off += 1;
+
+		size_t else_start = f->ins.top;
+		push_inst(l, f, (inst) {OP_JMP});
 
 		parse_code(l, f);
-		f->ins.items[start].off = f->ins.top - start;
+		f->ins.items[else_start].off = f->ins.top - else_start;
 	}
 
 	if (l->current.type != TOK_END) {
@@ -583,28 +607,28 @@ int parse_ret(lexer *l, f_data *f) {
 		return 1;
 	}
 	lex_next(l);
+	
+	int start = f->reg;
 
-	size_t t = alloc_temp(f);
-	int err = parse_expr(l, f, t);
-	if (err) {
-		return err;
+	if (parse_expr(l, f)) {
+		return -1;
 	}
 
 	size_t no_ret = 1;
 	while (l->current.type == TOK_COM) {
 		lex_next(l);
-		if (parse_expr(l, f, alloc_temp(f))) {
+		if (parse_expr(l, f)) {
 			return -1;
 		}
 
 		++no_ret;
 	}
 
-	push_inst(l, f, (inst) {OP_RET, .rout = no_ret, .rina = t});
-
 	for (int i = 0;i < no_ret;++i) {
 		free_temp(f);
 	}
+
+	push_inst(l, f, (inst) {OP_RET, .rout = no_ret, .rina = start});
 
 	return 0;
 }
@@ -646,24 +670,21 @@ int parse_local(lexer *l, f_data *f) {
 	assert(f->temp == 0);
 	
 	size_t t = 0;
-	// Temps are used to avoid data dependency workarounds, to reduce register use
-	size_t reg = alloc_temp(f);
 
-	if (parse_expr(l, f, reg)) {
+	if (parse_expr(l, f)) {
 		log_error(l, f, "No expression after local\n");
 		return -1;
 	}
 	trans_temp(f, id.items[t++]);
 
 	while (l->current.type == TOK_COM) {
-		reg = alloc_temp(f);
 		lex_next(l);
 
 		if (t >= id.top) {
 			log_error(l, f, "Excess of expressions after local\n");
 			return -1;
 		}
-		if (parse_expr(l, f, reg)) {
+		if (parse_expr(l, f)) {
 			log_error(l, f, "Unable to parse expression after local\n");
 			return -1;
 		}
@@ -673,15 +694,15 @@ int parse_local(lexer *l, f_data *f) {
 
 	if (t < id.top) {
 		inst *i = inst_list_rpeek(&f->ins);
-		if (i->op != OP_CALL && (--i)->op != OP_CALL) {
+		if (i->op != OP_CALL) {
 			log_error(l, f, "Lack of expressions after local\n");
 			return -1;
 		}
 		i->rinb += id.top - t;
+		// FIXME need to set the gc height after changing return no
 
-		//size_t f_reg = i->rout;
 		while (t < id.top) {
-			reg = alloc_local(f, id.items[t++]);
+			alloc_local(f, id.items[t++]);
 			//assert(reg == ++f_reg);
 		}
 	}
@@ -706,14 +727,12 @@ typedef struct assign {
 } assign;
 RH_AL_MAKE(ass_al, assign)
 
-int emit_bin_code(lexer *l, f_data *f, tokt op, size_t out, size_t left, size_t right);
 int parse_assign(lexer *l, f_data *f) {
 	if (l->current.type != TOK_IDENT) {
 		return 1;
 	}
 	
-	size_t reg = alloc_temp(f);
-	if (parse_pexpr(l, f, reg)) {
+	if (parse_pexpr(l, f)) {
 		log_error(l, f ,"Error invalid primary expression\n");
 		return -1;
 	}
@@ -729,7 +748,7 @@ int parse_assign(lexer *l, f_data *f) {
 	
 	while (l->current.type == TOK_COM) {
 		lex_next(l);		
-		if (parse_pexpr(l, f, reg)) {
+		if (parse_pexpr(l, f)) {
 			log_error(l, f ,"Error invalid target to assign\n");
 			return -1;
 		}
@@ -737,6 +756,8 @@ int parse_assign(lexer *l, f_data *f) {
 		SKIP_PARSE_EXPRESSION:;
 		
 		inst i = pop_inst(f);
+		free_temp(f);
+		
 		switch (i.op) {
 		case OP_MOV:
 			ass_al_push(&a, (assign) {ASS_LOCAL, i.rina});
@@ -752,12 +773,13 @@ int parse_assign(lexer *l, f_data *f) {
 			}
 			if (!is_local(f, i.rina)) {
 				// Register reserved for the index
-				reg = alloc_temp(f);
+				alloc_temp(f);
 			}
 			ass_al_push(&a, (assign) {ASS_TAB, .rtab = i.rina, .rkey = i.rinb});
 			break;
 		default:
 			log_error(l, f, "Error non-assignable primary expression in assignment\n");
+			print_inst(i);
 			return -1;
 		}
 	}
@@ -773,13 +795,12 @@ int parse_assign(lexer *l, f_data *f) {
 	inst_list locals = {0};
 	inst_list tabs_envs = {0};
 	
-	if (parse_expr(l, f, reg)) {
+	if (parse_expr(l, f)) {
 		log_error(l, f, "Error no rexpression\n");
 		return -1;
 	}
 	
-	int inline_mov(f_data *f, int reg);
-	int claim_temps(f_data *f, inst ins, int reg);
+	void claim_temps(f_data *f, inst ins);
 
 	int t = 0;
 	while (1) {
@@ -787,23 +808,21 @@ int parse_assign(lexer *l, f_data *f) {
 		case ASS_LOCAL: {
 			inst ins = pop_inst(f);
 			if (op_retarget[ins.op] && !assign_op) {
+				free_temp(f);
 				ins.rout = a.items[t].rout;
-				reg = claim_temps(f, ins, reg);
+				claim_temps(f, ins);
 				inst_list_push(&locals, ins);
 			} else {
 				push_inst(l, f, ins);
-				inst_list_push(&locals, (inst) {OP_MOV, .rout = a.items[t].rout, .rina = reg});
-				reg = alloc_temp(f);
+				inst_list_push(&locals, (inst) {OP_MOV, .rout = a.items[t].rout, .rina = top_or_local(f)});
 			}
 			break;
 		} case ASS_ENV:
-			inst_list_push(&tabs_envs, (inst) { OP_SENV, .reg = inline_mov(f, reg), .lit = a.items[t].renv});
-			reg = alloc_temp(f);
+			inst_list_push(&tabs_envs, (inst) { OP_SENV, .reg = top_or_local(f), .lit = a.items[t].renv});
 			break;
 		case ASS_TAB:
 			inst_list_push(&tabs_envs, (inst) { OP_STAB, .rout = a.items[t].rtab,
-				.rina = a.items[t].rkey, .rinb = inline_mov(f, reg)});
-			reg = alloc_temp(f);
+				.rina = a.items[t].rkey, .rinb = top_or_local(f)});
 			break;
 		}
 		
@@ -811,7 +830,7 @@ int parse_assign(lexer *l, f_data *f) {
 		
 		if (l->current.type == TOK_COM) {
 			lex_next(l);
-			if (parse_expr(l, f, reg)) {
+			if (parse_expr(l, f)) {
 				log_error(l, f, "Expected an rexpression following comma\n");
 				return -1;
 			}
@@ -821,51 +840,55 @@ int parse_assign(lexer *l, f_data *f) {
 				log_error(l, f, "Insufficent rexpressions to assign \n");
 				return -1;
 			}
+			
+			// FIXME must increase the gc_height when increasing the number of args
 			// Func must return one more
 			++i->rina;
-			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = reg});
+			
+			alloc_temp(f);
 		} else {
 			break;
 		}
 	}
 
 	if (assign_op) {
-		// TODO - emmit assignment operator code here
 		for (int i = 0;i < locals.top;++i) {
 			// Guarenteed to be a move instruction
 			inst ins = locals.items[i];
-			emit_bin_code(l, f, assign_op, ins.rout, ins.rout, ins.rina);
-			ins = pop_inst(f);
-			locals.items[i] = ins;
+			locals.items[i] = (inst) {assign_op, .rout = ins.rout, .rina = ins.rout, .rinb = ins.rina};
 		}
 		
+		int reg = alloc_temp(f);
 		for (int i = 0;i < tabs_envs.top;++i) {
 			inst ins = tabs_envs.items[i];
 			switch (ins.op) {
 			case OP_STAB:
 				// Reg is still availible for computation
 				push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = ins.rout, .rinb = ins.rina});
-				emit_bin_code(l, f, assign_op, ins.rinb, ins.rinb, reg);
+				push_inst(l, f, (inst) {assign_op, .rout = ins.rinb, .rina = ins.rinb, .rinb =  reg});
 			case OP_SENV:
 				push_inst(l, f, (inst) {OP_GENV, .reg = reg, .lit = ins.lit});
-				emit_bin_code(l, f, assign_op, ins.reg, ins.reg, reg);
+				push_inst(l, f, (inst) {assign_op, .rout = ins.rinb, .rina = ins.rinb, .rinb =  reg});
 			default:
 				log_error(l, f, "Internal Error: Unexpected instruction in tab/env assignment\n");
 				return -1;
 			}
 		}
+		free_temp(f /*reg*/);
 	}
 	
 
 	int redirect(inst op, int redir_reg, inst_list ops);
 	
-	// Free all temps used for tab indexing
 	inst ins;
 	while ((ins = inst_list_pop(&locals)).op) {
+		int reg = alloc_temp(f);
 		if (redirect(ins, reg,  locals) || redirect(ins, reg, tabs_envs)) {
+
 			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = ins.rout});
-			reg = alloc_temp(f);
 		}
+		free_temp(f /*reg*/);
+
 		push_inst(l, f, ins);
 	}
 	
@@ -879,30 +902,21 @@ int parse_assign(lexer *l, f_data *f) {
 
 	return 0;
 }
-int inline_mov(f_data *f, int reg) {
-	inst *i = inst_list_rpeek(&f->ins);
-	if (i->op == OP_MOV) {
-		pop_inst(f);
-		return i->rina;
-	}
-	return reg;
-}
-int claim_temps(f_data *f, inst ins, int reg) {
+void claim_temps(f_data *f, inst ins) {
 	switch (opcode_type[ins.op]) {
 	// Safe for all possible ops
 	case OPT_RRR:
 		if (!is_local(f, ins.rinb)) {
-			reg = alloc_temp(f);
+			alloc_temp(f);
 		}
 	case OPT_RR: // Fallthrough
 		if (!is_local(f, ins.rina)) {
-			reg = alloc_temp(f);
+			alloc_temp(f);
 		}
 		break;
 	default:
 		break;
 	}
-	return reg;
 }
 int redirect(inst op, int redir_reg, inst_list ops) {
 	int reg = op.rout;
@@ -923,6 +937,10 @@ int redirect(inst op, int redir_reg, inst_list ops) {
 				ins.rina = redir_reg;
 				redir = 1;
 			}
+			if (ins.rout == reg) {
+				ins.rout = redir_reg;
+				redir = 1;
+			}
 			ops.items[ops.top] = ins;
 			break;
 		default:
@@ -933,9 +951,11 @@ int redirect(inst op, int redir_reg, inst_list ops) {
 	return redir;
 }
 
-int emit_bin_code(lexer *l, f_data *f, tokt op, size_t out, size_t left, size_t right) {
-	inst *i = inst_list_rpeek(&f->ins);
-
+int emit_bin_code(lexer *l, f_data *f, tokt op, int left, int right) {
+	free_if_temp(f, right);
+	free_if_temp(f, left);
+		
+	int out = alloc_temp(f);
 	switch (op) {
 	case TOK_ADD:
 		push_inst(l, f, (inst) {OP_ADD, .rout = out, .rina = left, .rinb =  right});
@@ -978,47 +998,32 @@ static inline int bin_assoc(tokt op) {
 	}
 }
 
-int parse_expr(lexer *l, f_data *f, size_t reg) {
-	return parse_bin_expr(l, f, reg, 0);
+int parse_expr(lexer *l, f_data *f) {
+	return parse_bin_expr(l, f, 0);
 }
 
-int parse_bin_expr(lexer *l, f_data *f, size_t out, size_t precedence) {
-	size_t left = out;
-
-	if (parse_pexpr(l, f, left)) {
+int parse_bin_expr(lexer *l, f_data *f, int precedence) {
+	if (parse_pexpr(l, f)) {
 		return 1;
 	}
-	
-	inst i = inst_list_peek(&f->ins);
-	if (i.op == OP_MOV && (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence)) {
-		pop_inst(f);
-		left = i.rina;
-	}
 
-	size_t right = alloc_temp(f);
-	size_t temp = right;
 	while (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence) {
-		right = temp;
 		tokt op = l->current.type;
 		lex_next(l);
-
-		parse_bin_expr(l, f, right, bin_prec(op)+bin_assoc(op));
-
-		right = inline_mov(f, right);
-		if (is_local(f, right)) {
-			free_temp(f);
-		}
 		
-		emit_bin_code(l, f, op, out, left, right);
-		right = alloc_temp(f);
-	}
+		int left = top_or_local(f);
 
-	free_temp(f);
+		parse_bin_expr(l, f, bin_prec(op)+bin_assoc(op));
+		int right = top_or_local(f);
+		
+		emit_bin_code(l, f, op, left, right);
+	}
 
 	return 0;
 }
 
-int parse_tab(lexer *l, f_data *f, size_t reg) {
+int parse_tab(lexer *l, f_data *f) {
+	int reg = alloc_temp(f);
 	if (l->current.type !=  TOK_TABL) {
 		return 1;
 	}
@@ -1026,10 +1031,11 @@ int parse_tab(lexer *l, f_data *f, size_t reg) {
 
 	push_inst(l, f, (inst) {OP_TAB, reg});
 
-	size_t temp = alloc_temp(f);
-	while (!parse_expr(l, f, temp)) {
-		// Avoid unnessesary move instructions
-		push_inst(l, f, (inst) {OP_PTAB, .rout = reg, .rina = inline_mov(f, temp)});
+	while (!parse_expr(l, f)) {
+		int item = top_or_local(f);
+		free_if_temp(f, item);
+		
+		push_inst(l, f, (inst) {OP_PTAB, .rout = reg, .rina = item});
 
 		if (l->current.type != TOK_COM) {
 			if (l->current.type != TOK_TABR) {
@@ -1041,9 +1047,8 @@ int parse_tab(lexer *l, f_data *f, size_t reg) {
 		lex_next(l);
 	}
 
-	free_temp(f);
-
 	if (l->current.type !=  TOK_TABR) {
+		log_error(l, f, "Expected right bracket to close table expression");
 		return -1;
 	}
 	lex_next(l);
@@ -1051,82 +1056,82 @@ int parse_tab(lexer *l, f_data *f, size_t reg) {
 	return 0;
 }
 
-int parse_cont(lexer *l, f_data *f, size_t reg) {
+int parse_cont(lexer *l, f_data *f) {
 	switch (l->current.type) {
 	case TOK_INDL:{
-		size_t temp = alloc_temp(f);
+		int prefix = top_or_local(f);
 		lex_next(l);
 
-		parse_expr(l, f, temp);
+		parse_expr(l, f);
 		if (l->current.type != TOK_INDR) {
 			return -1;
 		}
 		lex_next(l);
+		
+		int index = top_or_local(f);
+		free_if_temp(f, index);
+		free_if_temp(f, prefix);
 
-		push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = reg, .rinb = temp});
+		int out = alloc_temp(f);
+		push_inst(l, f, (inst) {OP_GTAB, .rout = out, .rina = prefix, .rinb = index});
 
-		free_temp(f);
 		break;
 	}
 	case TOK_DOT:{
-		size_t temp = alloc_temp(f);
+		int prefix = top_or_local(f);
 		lex_next(l);
 		if (l->current.type != TOK_IDENT) {
 			return -1;
 		}
 
 		char *ident = lex_claim_lexme(l);
-		push_inst(l, f, (inst) {OP_SETL, temp, alloc_literal(f, (val) {VAL_STR,
+		lex_next(l);
+		
+		int index = alloc_temp(f);
+		push_inst(l, f, (inst) {OP_SETL, index, alloc_literal(f, (val) {VAL_STR,
 					.str = intern(&global_heap, &global_intern_map, (slice) {
 						.len = strlen(ident),
 						.str = ident })
 					})
 				});
 		free(ident);
+		
+		free_temp(f /*index*/);
+		free_if_temp(f, prefix);
+		
+		int out = alloc_temp(f);
+		push_inst(l, f, (inst) {OP_GTAB, .rout = out, .rina = prefix, .rinb = index});
 
-		push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = reg, .rinb = temp});
-
-		free_temp(f);
-		lex_next(l);
 		break;
 	}
 	case TOK_BRL:{
-		size_t f_reg = reg;
-		// func cannot be called from any reg other than the top - args needed
-		assert(reg == (f->reg + f->temp - 1));
-
-		if (inst_list_peek(&f->ins).op == OP_MOV) {
-			inst temp = inst_list_pop(&f->ins);
-			inst_list_push(&f->ins, (inst) { OP_MOV, .rout = f_reg, .rina = temp.rina });
-		}
+		int prefix = top(f);
 		lex_next(l);
 
 		size_t no_args = 0;
-		size_t temp = alloc_temp(f);
-		while (!parse_expr(l, f, temp)) {
-			++no_args;
-
-			if (l->current.type == TOK_COM) {
-				lex_next(l);
-			}
-
-			temp = alloc_temp(f);
-		}
-
-		free_temp(f);
-		
-		push_inst(l, f, (inst) {OP_CALL, .rout = f_reg, .rina = no_args, .rinb = 1});
-		
-		for (int i = 0;i < no_args;++i) {
-			free_temp(f);
-		}
-
 		if (l->current.type != TOK_BRR) {
+			do {
+				++no_args;
+				if (parse_expr(l, f)) {		
+					log_error(l, f, "Expected an expression in function call");
+					return 1;
+				}
+
+			} while (l->current.type == TOK_COM && lex_next(l));
+		}
+		
+		if (l->current.type != TOK_BRR) {
+			log_error(l, f, "Expected right bracket to close function call");
 			return -1;
 		}
 		lex_next(l);
-
-
+			
+		for (int i = 0;i < no_args;++i) {
+			free_temp(f);
+		}
+	
+		// No allocation needed for the return as prefix is not freed
+		push_inst(l, f, (inst) {OP_CALL, .rout = prefix, .rina = no_args, .rinb = 1});
 
 		break;
 	}default:
@@ -1135,7 +1140,9 @@ int parse_cont(lexer *l, f_data *f, size_t reg) {
 	return 0;
 }
 
-int parse_fun(lexer *l, f_data *f, size_t reg) {
+int parse_fun(lexer *l, f_data *f) {
+	int reg = alloc_temp(f);
+
 	if (l->current.type != TOK_BRL) {
 		return 1;
 	}
@@ -1195,19 +1202,19 @@ int parse_fun(lexer *l, f_data *f, size_t reg) {
 	return 0;
 }
 
-int parse_pexpr(lexer *l, f_data *f, size_t reg) {
+int parse_pexpr(lexer *l, f_data *f) {
 	switch (l->current.type) {
 	case TOK_NIL:
-		push_inst(l, f, (inst) {OP_NIL, reg, 0});
+		push_inst(l, f, (inst) {OP_NIL, alloc_temp(f), 0});
 		lex_next(l);
 		break;
 	case TOK_NUM:
-		push_inst(l, f, (inst) {OP_SETL, reg
+		push_inst(l, f, (inst) {OP_SETL, alloc_temp(f)
 			, alloc_literal(f, (val) {VAL_NUM, l->current.num})});
 		lex_next(l);
 		break;
 	case TOK_TABL:
-		if (parse_tab(l, f, reg)) {
+		if (parse_tab(l, f)) {
 			log_error(l, f, "Error unable parse tab\n");
 			return 1;
 		}
@@ -1215,7 +1222,7 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 	case TOK_IDENT:{
 		size_t *local = find_local(f, l->current.lexme);
 		if (local) {
-			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = *local});
+			push_inst(l, f, (inst) {OP_MOV, .rout = alloc_temp(f), .rina = *local});
 		} else {
 			char *ident = lex_claim_lexme(l);
 			int lit = alloc_literal(f, (val) {VAL_STR,
@@ -1225,18 +1232,21 @@ int parse_pexpr(lexer *l, f_data *f, size_t reg) {
 				})
 			});
 			free(ident);
-			push_inst(l, f, (inst) {OP_GENV, .reg = reg, .lit = lit});
+			push_inst(l, f, (inst) {OP_GENV, .reg = alloc_temp(f), .lit = lit});
 		}
 		lex_next(l);
 		break;
 	} case TOK_FUN:{
 		lex_next(l);
-		parse_fun(l, f, reg);
+		if (parse_fun(l, f)) {
+			log_error(l, f, "Error; unable to parse fun\n");
+			return 1;
+		}
 		break;
 	} default:
 		return 1;
 	}
-	return parse_cont(l, f, reg);
+	return parse_cont(l, f);
 }
 
 #endif
