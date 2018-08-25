@@ -27,7 +27,6 @@ nua_state *nua_init() {
 	nua_state *n = malloc(sizeof(*n));
 	*n = (nua_state) {.stack = val_al_new(256)};
 	for (int i = 0;i < 256;++i) {
-		n->stack.items[i] = (val) { VAL_NIL };
 	}
 	return n;
 }
@@ -44,9 +43,6 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 	if (max >= n->stack.size) {
 		size_t old = n->stack.size, new = n->stack.size * 2;
 		val_al_resize(&n->stack, new);
-		for (int i = old;i < new;++i) {
-			n->stack.items[i] = (val) {VAL_NIL};
-		}
 	}
 
 	// MAY BE INVALIDATED DURING FUNCTION CALL DUE TO RESIZE

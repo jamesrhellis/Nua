@@ -302,7 +302,6 @@ int lex_next(lexer *l) {
 	}
 
 	l->current = __lex_next(l);
-	printf("%ld, %ld\n", l->line, l->pos - l->lstart);
 	return l->current.type != TOK_EOI;
 }
 
