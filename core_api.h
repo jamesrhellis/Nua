@@ -26,8 +26,6 @@ int nua_c_func(nua_state *n, int arg_base, int no_args, int no_returns);
 nua_state *nua_init() {
 	nua_state *n = malloc(sizeof(*n));
 	*n = (nua_state) {.stack = val_al_new(256)};
-	for (int i = 0;i < 256;++i) {
-	}
 	return n;
 }
 
@@ -56,14 +54,14 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 		inst ins = f->def->ins.items[pc];
 		//printf("%d", pc);print_inst(ins);
 		switch (ins.op) {
-		case OP_JMP:
-			pc += ins.off;
-			continue;	// Avoid addition at end of loop
 		case OP_COVER:
 			if (reg[ins.reg].type != VAL_NIL) {
 				pc++;
-			}
-			break;
+				break;
+			} // else fall through	
+		case OP_JMP:
+			pc += ins.off;
+			continue;	// Avoid addition at end of loop
 		case OP_NIL:
 			reg[ins.reg] = (val) {VAL_NIL};
 			break;
@@ -202,8 +200,8 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 		default:
 			break;
 		}
-		gc_mark(n, base + f->def->gc_height.items[pc]);
-		gc_sweep(&global_heap, n->white);
+		//gc_mark(n, base + f->def->gc_height.items[pc]);
+		//gc_sweep(&global_heap, n->white);
 		
 		pc++;
 	}

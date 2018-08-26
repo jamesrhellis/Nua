@@ -26,7 +26,7 @@ static inline uint64_t val_hash(const val v) {
 
 	switch (v.type) {
 	case VAL_NUM:
-		hash = *((uint64_t *)&(v.num));
+		memcpy(&hash, &v.num, sizeof(v.num));
 		break;
 	case VAL_TAB:
 		hash = ((uintptr_t)(v.tab));

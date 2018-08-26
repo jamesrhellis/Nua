@@ -476,6 +476,11 @@ int parse(lexer l, func_def *f) {
 	rem_scope(&fd);
 
 	free(fd.scopes.items);
+	
+	if (l.current.type != TOK_EOI) {
+		log_error(&l, &fd, "Did not completely parse input");
+		return -1;
+	}
 
 	push_inst(&l, &fd, (inst) {OP_RET});
 	f->ins = fd.ins;
@@ -522,11 +527,13 @@ int parse_while(lexer *l, f_data *f) {
 	
 	size_t start = f->ins.top;
 	if (parse_expr(l, f)) {
+		log_error(l, f, "Invalid while condition");
 		return -1;
 	}
 	int condition = top_or_local(f);
 	
 	if (l->current.type != TOK_DO) {
+		log_error(l, f, "Expected do token to close while condition");
 		return -1;
 	}
 	lex_next(l);
