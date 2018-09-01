@@ -11,7 +11,7 @@ RH_AL_MAKE(error_al, struct error);
 
 error_al parse_errors;
 
-static inline void log_error(lexer *l, f_data *f, char *c) {
+static inline void log_error(parser *l, f_data *f, char *c) {
 	error_al_push(&parse_errors, (struct error){.err=c});
 }
 

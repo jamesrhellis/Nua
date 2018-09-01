@@ -42,7 +42,7 @@ int main(int argn, char **args) {
 		*base = (func) {.type = FUNC_NUA, .def = gc_alloc(&global_heap, sizeof(*base->def), GC_FUNCDEF), .env = env};
 	}
 
-	if (parse((lexer){args[1], file, .lstart = file}, base->def) || parse_errors.items) {
+	if (parse((parser){args[1], file, .lstart = file}, base->def) || parse_errors.items) {
 		fprintf(stderr, "Unable to parse file!\n");
 		rh_al_for(struct error e, parse_errors, {
 			print_error(e);

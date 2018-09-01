@@ -92,15 +92,15 @@ typedef struct {
 	const char *lstart;
 
 	token current;
-} lexer;
+} parser;
 
 char unexpected_char[] = "Unexpected char!";
 char unexpected_newl[] = "Unexpected newline in string literal!";
 
-static inline token parse_symb(lexer *l) {
-	switch (*l->pos++) {
+static inline token parse_symb(parser *p) {
+	switch (*p->pos++) {
 	case '=':
-		if (*l->pos == '=') {
+		if (*p->pos == '=') {
 			return (token) {
 				TOK_EQ,
 			};
@@ -117,7 +117,7 @@ static inline token parse_symb(lexer *l) {
 			TOK_SUB,
 		};
 	case '>':
-		if (*l->pos == '=') {
+		if (*p->pos == '=') {
 			return (token) {
 				TOK_GE,
 			};
@@ -185,13 +185,13 @@ int parse_init(void) {
 }
 
 
-static inline token parse_ident(lexer *l) {
-	const char *start = l->pos;
+static inline token parse_ident(parser *p) {
+	const char *start = p->pos;
 
-	while (isalnum(*++l->pos)) {
+	while (isalnum(*++p->pos)) {
 	}
 
-	size_t len = l->pos - start;
+	size_t len = p->pos - start;
 	char *str = malloc(len + 1);
 	memcpy(str, start, len);
 	str[len] = '\0';
@@ -209,28 +209,28 @@ static inline token parse_ident(lexer *l) {
 	};
 }
 
-static inline token parse_str(lexer *l) {
-	const char *start = l->pos++;
+static inline token parse_str(parser *p) {
+	const char *start = p->pos++;
 	int escs = 0;
 	int in_str = 1;
 	while (in_str) {
-		if (*l->pos == '\\') {
+		if (*p->pos == '\\') {
 			escs++;
-		} else if (*l->pos == '\n') {
-			l->pos++;
+		} else if (*p->pos == '\n') {
+			p->pos++;
 			return (token) {
 				TOK_ERR,
 				unexpected_newl
 			};
-		} else if (*l->pos == '\"' && *(l->pos - 1) != '\\') {
+		} else if (*p->pos == '\"' && *(p->pos - 1) != '\\') {
 			break;
 		}
-		l->pos++;
+		p->pos++;
 	}
 
-	char *str = malloc(l->pos - start - escs + 1);
+	char *str = malloc(p->pos - start - escs + 1);
 	int i = 0;
-	while (start < l->pos) {
+	while (start < p->pos) {
 		str[i] = *start++;
 		if (str[i] == '\\') {
 			if (*start == 'n') {
@@ -245,7 +245,7 @@ static inline token parse_str(lexer *l) {
 	str[i] = '\0';
 
 	//Go past ending "
-	l->pos++;
+	p->pos++;
 	
 	return (token) {
 		TOK_STR,
@@ -253,19 +253,19 @@ static inline token parse_str(lexer *l) {
 	};
 }
 
-static inline token parse_no(lexer *l) {
+static inline token parse_no(parser *p) {
 	return (token) {
 		TOK_NUM,
-		.num = strtod(l->pos, (char **)&l->pos)
+		.num = strtod(p->pos, (char **)&p->pos)
 	};
 }
 
-token __lex_next(lexer *l) {
-	while (isspace(*l->pos)) {
-		if (*l->pos == '\n') {
-			l->line++;
-			l->lstart = l->pos;
-			const char *line = l->pos + 1;
+token __lex_next(parser *p) {
+	while (isspace(*p->pos)) {
+		if (*p->pos == '\n') {
+			p->line++;
+			p->lstart = p->pos;
+			const char *line = p->pos + 1;
 			/*
 			while (*line && *line != '\n') {
 				putchar(*line++);
@@ -273,18 +273,18 @@ token __lex_next(lexer *l) {
 			putchar('\n');
 			*/
 		}
-		l->pos++;
+		p->pos++;
 	}
 
-	if (*l->pos == '\"') {
-		return parse_str(l);
-	} else if(isdigit(*l->pos)) {
-		return parse_no(l);
-	} else if (ispunct(*l->pos)) {
-		return parse_symb(l);
-	} else if (isalpha(*l->pos)) {
-		return parse_ident(l);
-	} else if (*l->pos == '\0') {
+	if (*p->pos == '\"') {
+		return parse_str(p);
+	} else if(isdigit(*p->pos)) {
+		return parse_no(p);
+	} else if (ispunct(*p->pos)) {
+		return parse_symb(p);
+	} else if (isalpha(*p->pos)) {
+		return parse_ident(p);
+	} else if (*p->pos == '\0') {
 		return (token) {TOK_EOI};
 	}
 
@@ -294,23 +294,23 @@ token __lex_next(lexer *l) {
 	};
 }
 
-int lex_next(lexer *l) {
-	switch (l->current.type) {
+int lex_next(parser *p) {
+	switch (p->current.type) {
 	case TOK_IDENT:
 	case TOK_STR:
-		free(l->current.lexme);
+		free(p->current.lexme);
 		break;
 	default:
 		break;
 	}
 
-	l->current = __lex_next(l);
-	return l->current.type != TOK_EOI;
+	p->current = __lex_next(p);
+	return p->current.type != TOK_EOI;
 }
 
-char *lex_claim_lexme(lexer *l) {
-	char *lex = l->current.lexme;
-	l->current.lexme = NULL;
+char *lex_claim_lexme(parser *p) {
+	char *lex = p->current.lexme;
+	p->current.lexme = NULL;
 	return lex;
 }
 
@@ -433,9 +433,9 @@ static inline int is_local(f_data *f, uint8_t reg) {
 	return reg < f->reg;
 }
 
-void push_inst(lexer *l, f_data *f, inst i) {
+void push_inst(parser *p, f_data *f, inst i) {
 	inst_list_push(&f->ins, i);
-	inst_lines_push(&f->lines, l->line+1);
+	inst_lines_push(&f->lines, p->line+1);
 	inst_lines_push(&f->gc_height, f->reg + f->temp);
 }
 
@@ -466,10 +466,10 @@ int top_or_local(f_data *f) {
 	return top(f);
 }
 
-size_t linked_jump(lexer *l, f_data *f, size_t pos) {
+size_t linked_jump(parser *p, f_data *f, size_t pos) {
 	size_t at = f->ins.top;
 	// FIXME a loop break may be at 0
-	push_inst(l, f, (inst) { OP_JMP, .off = pos?pos - at:0 });
+	push_inst(p, f, (inst) { OP_JMP, .off = pos?pos - at:0 });
 	return at;
 }
 
@@ -489,24 +489,24 @@ void set_jump_list(f_data *f, size_t pos, size_t to) {
 	} while (offset);
 }	
 
-int parse_code(lexer *l, f_data *f);
-int parse_local(lexer *l, f_data *f);
-int parse_assign(lexer *l, f_data *f);
-int parse_expr(lexer *l, f_data *f);
-int parse_bin_expr(lexer *l, f_data *f, int precedence);
-int parse_pexpr(lexer *l, f_data *f);
-int parse_if(lexer *l, f_data *f);
-int parse_ret(lexer *l, f_data *f);
-int parse_while(lexer *l, f_data *f);
-int parse_break(lexer *l, f_data *f);
-int parse_continue(lexer *l, f_data *f);
+int parse_code(parser *p, f_data *f);
+int parse_local(parser *p, f_data *f);
+int parse_assign(parser *p, f_data *f);
+int parse_expr(parser *p, f_data *f);
+int parse_bin_expr(parser *p, f_data *f, int precedence);
+int parse_pexpr(parser *p, f_data *f);
+int parse_if(parser *p, f_data *f);
+int parse_ret(parser *p, f_data *f);
+int parse_while(parser *p, f_data *f);
+int parse_break(parser *p, f_data *f);
+int parse_continue(parser *p, f_data *f);
 
-int parse(lexer l, func_def *f) {
-	lex_next(&l);
+int parse(parser p, func_def *f) {
+	lex_next(&p);
 	f_data fd = {0};
 	add_scope(&fd);
 
-	int err =  parse_code(&l, &fd);
+	int err =  parse_code(&p, &fd);
 	if (err) {
 		return err;
 	}
@@ -514,46 +514,46 @@ int parse(lexer l, func_def *f) {
 
 	free(fd.scopes.items);
 	
-	if (l.current.type != TOK_EOI) {
-		log_error(&l, &fd, "Did not completely parse input");
+	if (p.current.type != TOK_EOI) {
+		log_error(&p, &fd, "Did not completely parse input");
 		return -1;
 	}
 
-	push_inst(&l, &fd, (inst) {OP_RET});
+	push_inst(&p, &fd, (inst) {OP_RET});
 	f->ins = fd.ins;
 	f->max_reg = fd.max_reg;
 	f->lines = fd.lines;
 	f->gc_height = fd.gc_height;
 	f->literals = fd.literals;
-	f->file = l.file;
+	f->file = p.file;
 
 	return 0;
 }
 
-int parse_code(lexer *l, f_data *f) {
+int parse_code(parser *p, f_data *f) {
 	int err = 0;
 	while (!err) {
-		switch (l->current.type) {
+		switch (p->current.type) {
 		case TOK_IF:
-			err = parse_if(l, f);
+			err = parse_if(p, f);
 			break;
 		case TOK_WHILE:
-			err = parse_while(l, f);
+			err = parse_while(p, f);
 			break;
 		case TOK_BREAK:
-			err = parse_break(l, f);
+			err = parse_break(p, f);
 			break;
 		case TOK_CONTINUE:
-			err = parse_continue(l, f);
+			err = parse_continue(p, f);
 			break;
 		case TOK_LOCAL:
-			err = parse_local(l, f);
+			err = parse_local(p, f);
 			break;
 		case TOK_RET:
-			err = parse_ret(l, f);
+			err = parse_ret(p, f);
 			break;
 		default:
-			err = parse_assign(l, f);
+			err = parse_assign(p, f);
 			break;
 		}
 	}
@@ -561,41 +561,41 @@ int parse_code(lexer *l, f_data *f) {
 	return 0;
 }
 
-int parse_break(lexer *l, f_data *f) {
-	if (l->current.type != TOK_BREAK) {
+int parse_break(parser *p, f_data *f) {
+	if (p->current.type != TOK_BREAK) {
 		return 1;
 	}
-	lex_next(l);
+	lex_next(p);
 	
 	if (!f->loop.in_loop) {
 		return -1;
 	}
-	f->loop.last_break = linked_jump(l, f, f->loop.last_break);
+	f->loop.last_break = linked_jump(p, f, f->loop.last_break);
 	
 	return 0;
 }
 
-int parse_continue(lexer *l, f_data *f) {
-	if (l->current.type != TOK_CONTINUE) {
+int parse_continue(parser *p, f_data *f) {
+	if (p->current.type != TOK_CONTINUE) {
 		return 1;
 	}
-	lex_next(l);
+	lex_next(p);
 	
 	if (!f->loop.in_loop) {
 		return -1;
 	}
 	size_t at = f->ins.top;
-	push_inst(l, f, (inst) { OP_JMP, .off = f->loop.start - at });
+	push_inst(p, f, (inst) { OP_JMP, .off = f->loop.start - at });
 
 	return 0;
 }
 
-int parse_while(lexer *l, f_data *f) {
-	if (l->current.type != TOK_WHILE) {
+int parse_while(parser *p, f_data *f) {
+	if (p->current.type != TOK_WHILE) {
 		return 1;
 	}
 	add_scope(f);
-	lex_next(l);
+	lex_next(p);
 	
 	size_t start = f->ins.top;
 	loop_data old = f->loop;
@@ -604,26 +604,26 @@ int parse_while(lexer *l, f_data *f) {
 		.start = start,
 	};
 	
-	if (parse_expr(l, f)) {
-		log_error(l, f, "Invalid while condition");
+	if (parse_expr(p, f)) {
+		log_error(p, f, "Invalid while condition");
 		return -1;
 	}
 	int condition = top_or_local(f);
 	
-	if (l->current.type != TOK_DO) {
-		log_error(l, f, "Expected do token to close while condition");
+	if (p->current.type != TOK_DO) {
+		log_error(p, f, "Expected do token to close while condition");
 		return -1;
 	}
-	lex_next(l);
+	lex_next(p);
 
 	free_if_temp(f, condition);
-	push_inst(l, f, (inst) {OP_COVER, condition});
+	push_inst(p, f, (inst) {OP_COVER, condition});
 
 	size_t jmp_from = f->ins.top;
-	push_inst(l, f, (inst) {OP_JMP});
+	push_inst(p, f, (inst) {OP_JMP});
 
-	parse_code(l, f);
-	push_inst(l, f, (inst) {OP_JMP, .off = start - f->ins.top });
+	parse_code(p, f);
+	push_inst(p, f, (inst) {OP_JMP, .off = start - f->ins.top });
 	
 	size_t end = f->ins.top;
 	f->ins.items[jmp_from].off = f->ins.top - jmp_from;
@@ -631,82 +631,82 @@ int parse_while(lexer *l, f_data *f) {
 	set_jump_list(f, f->loop.last_break, end);
 	f->loop = old;
 
-	if (l->current.type != TOK_END) {
+	if (p->current.type != TOK_END) {
 		return -1;
 	}
-	lex_next(l);
+	lex_next(p);
 
 	rem_scope(f);
 
 	return 0;
 }
 
-int parse_if(lexer *l, f_data *f) {
-	if (l->current.type != TOK_IF) {
+int parse_if(parser *p, f_data *f) {
+	if (p->current.type != TOK_IF) {
 		return 1;
 	}
 
 	add_scope(f);
-	lex_next(l);
+	lex_next(p);
 	
-	if (parse_expr(l, f)) {
+	if (parse_expr(p, f)) {
 		return -1;
 	}
 	int condition = top_or_local(f);
 	
-	if (l->current.type != TOK_THEN) {
+	if (p->current.type != TOK_THEN) {
 		return -1;
 	}
-	lex_next(l);
+	lex_next(p);
 
 	free_if_temp(f, condition);
-	push_inst(l, f, (inst) {OP_COVER, condition});
+	push_inst(p, f, (inst) {OP_COVER, condition});
 	
 	size_t if_start = f->ins.top;
-	push_inst(l, f, (inst) {OP_JMP});
+	push_inst(p, f, (inst) {OP_JMP});
 
-	parse_code(l, f);
+	parse_code(p, f);
 	f->ins.items[if_start].off = f->ins.top - if_start;
 
-	if (l->current.type == TOK_ELSE) {
-		lex_next(l);
+	if (p->current.type == TOK_ELSE) {
+		lex_next(p);
 		
 		// Jump past exit jump added here
 		f->ins.items[if_start].off += 1;
 
 		size_t else_start = f->ins.top;
-		push_inst(l, f, (inst) {OP_JMP});
+		push_inst(p, f, (inst) {OP_JMP});
 
-		parse_code(l, f);
+		parse_code(p, f);
 		f->ins.items[else_start].off = f->ins.top - else_start;
 	}
 
-	if (l->current.type != TOK_END) {
+	if (p->current.type != TOK_END) {
 		return -1;
 	}
-	lex_next(l);
+	lex_next(p);
 
 	rem_scope(f);
 
 	return 0;
 }
 
-int parse_ret(lexer *l, f_data *f) {
-	if (l->current.type != TOK_RET) {
+int parse_ret(parser *p, f_data *f) {
+	if (p->current.type != TOK_RET) {
 		return 1;
 	}
-	lex_next(l);
+	lex_next(p);
 	
 	int start = f->reg;
 
-	if (parse_expr(l, f)) {
+	if (parse_expr(p, f)) {
 		return -1;
 	}
 
 	size_t no_ret = 1;
-	while (l->current.type == TOK_COM) {
-		lex_next(l);
-		if (parse_expr(l, f)) {
+	while (p->current.type == TOK_COM) {
+		lex_next(p);
+		if (parse_expr(p, f)) {
 			return -1;
 		}
 
@@ -717,7 +717,7 @@ int parse_ret(lexer *l, f_data *f) {
 		free_temp(f);
 	}
 
-	push_inst(l, f, (inst) {OP_RET, .rout = no_ret, .rina = start});
+	push_inst(p, f, (inst) {OP_RET, .rout = no_ret, .rina = start});
 
 	return 0;
 }
@@ -725,56 +725,56 @@ int parse_ret(lexer *l, f_data *f) {
 RH_AL_MAKE(reg_al, uint8_t)
 RH_AL_MAKE(ident_al, char *)
 
-int parse_local(lexer *l, f_data *f) {
-	if (l->current.type != TOK_LOCAL) {
+int parse_local(parser *p, f_data *f) {
+	if (p->current.type != TOK_LOCAL) {
 		return 1;
 	}
-	lex_next(l);
+	lex_next(p);
 
 	ident_al id = {0};
-	if (l->current.type != TOK_IDENT) {
-		log_error(l, f, "No identifier after local\n");
+	if (p->current.type != TOK_IDENT) {
+		log_error(p, f, "No identifier after local\n");
 		return -1;
 	}
-	ident_al_push(&id, lex_claim_lexme(l));
-	lex_next(l);
+	ident_al_push(&id, lex_claim_lexme(p));
+	lex_next(p);
 
-	while (l->current.type == TOK_COM) {
-		lex_next(l);
-		if (l->current.type != TOK_IDENT) {
-			log_error(l, f, "No identifier after comma \n");
+	while (p->current.type == TOK_COM) {
+		lex_next(p);
+		if (p->current.type != TOK_IDENT) {
+			log_error(p, f, "No identifier after comma \n");
 			return -1;
 		}
 
-		ident_al_push(&id, lex_claim_lexme(l));
-		lex_next(l);
+		ident_al_push(&id, lex_claim_lexme(p));
+		lex_next(p);
 	}
 
-	if (l->current.type != TOK_ASSIGN) {
-		log_error(l, f, "Error no assignment\n");
+	if (p->current.type != TOK_ASSIGN) {
+		log_error(p, f, "Error no assignment\n");
 		return -1;
 	}
-	lex_next(l);
+	lex_next(p);
 	
 	assert(f->temp == 0);
 	
 	size_t t = 0;
 
-	if (parse_expr(l, f)) {
-		log_error(l, f, "No expression after local\n");
+	if (parse_expr(p, f)) {
+		log_error(p, f, "No expression after local\n");
 		return -1;
 	}
 	trans_temp(f, id.items[t++]);
 
-	while (l->current.type == TOK_COM) {
-		lex_next(l);
+	while (p->current.type == TOK_COM) {
+		lex_next(p);
 
 		if (t >= id.top) {
-			log_error(l, f, "Excess of expressions after local\n");
+			log_error(p, f, "Excess of expressions after local\n");
 			return -1;
 		}
-		if (parse_expr(l, f)) {
-			log_error(l, f, "Unable to parse expression after local\n");
+		if (parse_expr(p, f)) {
+			log_error(p, f, "Unable to parse expression after local\n");
 			return -1;
 		}
 
@@ -784,7 +784,7 @@ int parse_local(lexer *l, f_data *f) {
 	if (t < id.top) {
 		inst *i = inst_list_rpeek(&f->ins);
 		if (i->op != OP_CALL) {
-			log_error(l, f, "Lack of expressions after local\n");
+			log_error(p, f, "Lack of expressions after local\n");
 			return -1;
 		}
 		i->rinb += id.top - t;
@@ -816,18 +816,18 @@ typedef struct assign {
 } assign;
 RH_AL_MAKE(ass_al, assign)
 
-int parse_assign(lexer *l, f_data *f) {
-	if (l->current.type != TOK_IDENT) {
+int parse_assign(parser *p, f_data *f) {
+	if (p->current.type != TOK_IDENT) {
 		return 1;
 	}
 	
-	if (parse_pexpr(l, f)) {
-		log_error(l, f ,"Error invalid primary expression\n");
+	if (parse_pexpr(p, f)) {
+		log_error(p, f ,"Error invalid primary expression\n");
 		return -1;
 	}
 	
 	// Early return to parse primary expressions - e.g function calls
-	if (l->current.type != TOK_COM && l->current.type != TOK_ASSIGN) {
+	if (p->current.type != TOK_COM && p->current.type != TOK_ASSIGN) {
 		free_temp(f);
 		return 0;
 	}
@@ -835,10 +835,10 @@ int parse_assign(lexer *l, f_data *f) {
 	ass_al a = {0};
 	goto SKIP_PARSE_EXPRESSION;
 	
-	while (l->current.type == TOK_COM) {
-		lex_next(l);		
-		if (parse_pexpr(l, f)) {
-			log_error(l, f ,"Error invalid target to assign\n");
+	while (p->current.type == TOK_COM) {
+		lex_next(p);		
+		if (parse_pexpr(p, f)) {
+			log_error(p, f ,"Error invalid target to assign\n");
 			return -1;
 		}
 		
@@ -867,7 +867,7 @@ int parse_assign(lexer *l, f_data *f) {
 			ass_al_push(&a, (assign) {ASS_TAB, .rtab = i.rina, .rkey = i.rinb});
 			break;
 		default:
-			log_error(l, f, "Error non-assignable primary expression in assignment\n");
+			log_error(p, f, "Error non-assignable primary expression in assignment\n");
 			print_inst(i);
 			return -1;
 		}
@@ -875,17 +875,17 @@ int parse_assign(lexer *l, f_data *f) {
 	
 	int assign_op = 0;
 
-	if (l->current.type != TOK_ASSIGN) {
-		log_error(l, f, "Expected assignment operator\n");
+	if (p->current.type != TOK_ASSIGN) {
+		log_error(p, f, "Expected assignment operator\n");
 		return -1;
 	}
-	lex_next(l);
+	lex_next(p);
 
 	inst_list locals = {0};
 	inst_list tabs_envs = {0};
 	
-	if (parse_expr(l, f)) {
-		log_error(l, f, "Error no rexpression\n");
+	if (parse_expr(p, f)) {
+		log_error(p, f, "Error no rexpression\n");
 		return -1;
 	}
 	
@@ -902,7 +902,7 @@ int parse_assign(lexer *l, f_data *f) {
 				claim_temps(f, ins);
 				inst_list_push(&locals, ins);
 			} else {
-				push_inst(l, f, ins);
+				push_inst(p, f, ins);
 				inst_list_push(&locals, (inst) {OP_MOV, .rout = a.items[t].rout, .rina = top_or_local(f)});
 			}
 			break;
@@ -917,16 +917,16 @@ int parse_assign(lexer *l, f_data *f) {
 		
 		++t;
 		
-		if (l->current.type == TOK_COM) {
-			lex_next(l);
-			if (parse_expr(l, f)) {
-				log_error(l, f, "Expected an rexpression following comma\n");
+		if (p->current.type == TOK_COM) {
+			lex_next(p);
+			if (parse_expr(p, f)) {
+				log_error(p, f, "Expected an rexpression following comma\n");
 				return -1;
 			}
 		} else if (t < a.top) {
 			inst *i = inst_list_rpeek(&f->ins);
 			if (i->op != OP_CALL) {
-				log_error(l, f, "Insufficent rexpressions to assign \n");
+				log_error(p, f, "Insufficent rexpressions to assign \n");
 				return -1;
 			}
 			
@@ -953,13 +953,13 @@ int parse_assign(lexer *l, f_data *f) {
 			switch (ins.op) {
 			case OP_STAB:
 				// Reg is still availible for computation
-				push_inst(l, f, (inst) {OP_GTAB, .rout = reg, .rina = ins.rout, .rinb = ins.rina});
-				push_inst(l, f, (inst) {assign_op, .rout = ins.rinb, .rina = ins.rinb, .rinb =  reg});
+				push_inst(p, f, (inst) {OP_GTAB, .rout = reg, .rina = ins.rout, .rinb = ins.rina});
+				push_inst(p, f, (inst) {assign_op, .rout = ins.rinb, .rina = ins.rinb, .rinb =  reg});
 			case OP_SENV:
-				push_inst(l, f, (inst) {OP_GENV, .reg = reg, .lit = ins.lit});
-				push_inst(l, f, (inst) {assign_op, .rout = ins.rinb, .rina = ins.rinb, .rinb =  reg});
+				push_inst(p, f, (inst) {OP_GENV, .reg = reg, .lit = ins.lit});
+				push_inst(p, f, (inst) {assign_op, .rout = ins.rinb, .rina = ins.rinb, .rinb =  reg});
 			default:
-				log_error(l, f, "Internal Error: Unexpected instruction in tab/env assignment\n");
+				log_error(p, f, "Internal Error: Unexpected instruction in tab/env assignment\n");
 				return -1;
 			}
 		}
@@ -974,15 +974,15 @@ int parse_assign(lexer *l, f_data *f) {
 		int reg = alloc_temp(f);
 		if (redirect(ins, reg,  locals) || redirect(ins, reg, tabs_envs)) {
 
-			push_inst(l, f, (inst) {OP_MOV, .rout = reg, .rina = ins.rout});
+			push_inst(p, f, (inst) {OP_MOV, .rout = reg, .rina = ins.rout});
 		}
 		free_temp(f /*reg*/);
 
-		push_inst(l, f, ins);
+		push_inst(p, f, ins);
 	}
 	
 	while ((ins = inst_list_pop(&tabs_envs)).op) {
-		push_inst(l, f, ins);
+		push_inst(p, f, ins);
 	}
 
 
@@ -1040,23 +1040,23 @@ int redirect(inst op, int redir_reg, inst_list ops) {
 	return redir;
 }
 
-int emit_bin_code(lexer *l, f_data *f, tokt op, int left, int right) {
+int emit_bin_code(parser *p, f_data *f, tokt op, int left, int right) {
 	free_if_temp(f, right);
 	free_if_temp(f, left);
 		
 	int out = alloc_temp(f);
 	switch (op) {
 	case TOK_ADD:
-		push_inst(l, f, (inst) {OP_ADD, .rout = out, .rina = left, .rinb =  right});
+		push_inst(p, f, (inst) {OP_ADD, .rout = out, .rina = left, .rinb =  right});
 		break;
 	case TOK_SUB:
-		push_inst(l, f, (inst) {OP_SUB, .rout = out, .rina = left, .rinb =  right});
+		push_inst(p, f, (inst) {OP_SUB, .rout = out, .rina = left, .rinb =  right});
 		break;
 	case TOK_GT:
-		push_inst(l, f, (inst) {OP_GT, .rout = out, .rina = left, .rinb =  right});
+		push_inst(p, f, (inst) {OP_GT, .rout = out, .rina = left, .rinb =  right});
 		break;
 	case TOK_GE:
-		push_inst(l, f, (inst) {OP_GE, .rout = out, .rina = left, .rinb =  right});
+		push_inst(p, f, (inst) {OP_GE, .rout = out, .rina = left, .rinb =  right});
 		break;
 	default:
 		break;
@@ -1087,97 +1087,97 @@ static inline int bin_assoc(tokt op) {
 	}
 }
 
-int parse_expr(lexer *l, f_data *f) {
-	return parse_bin_expr(l, f, 0);
+int parse_expr(parser *p, f_data *f) {
+	return parse_bin_expr(p, f, 0);
 }
 
-int parse_bin_expr(lexer *l, f_data *f, int precedence) {
-	if (parse_pexpr(l, f)) {
+int parse_bin_expr(parser *p, f_data *f, int precedence) {
+	if (parse_pexpr(p, f)) {
 		return 1;
 	}
 
-	while (bin_prec(l->current.type) && bin_prec(l->current.type) >= precedence) {
-		tokt op = l->current.type;
-		lex_next(l);
+	while (bin_prec(p->current.type) && bin_prec(p->current.type) >= precedence) {
+		tokt op = p->current.type;
+		lex_next(p);
 		
 		int left = top_or_local(f);
 
-		parse_bin_expr(l, f, bin_prec(op)+bin_assoc(op));
+		parse_bin_expr(p, f, bin_prec(op)+bin_assoc(op));
 		int right = top_or_local(f);
 		
-		emit_bin_code(l, f, op, left, right);
+		emit_bin_code(p, f, op, left, right);
 	}
 
 	return 0;
 }
 
-int parse_tab(lexer *l, f_data *f) {
+int parse_tab(parser *p, f_data *f) {
 	int reg = alloc_temp(f);
-	if (l->current.type !=  TOK_TABL) {
+	if (p->current.type !=  TOK_TABL) {
 		return 1;
 	}
-	lex_next(l);
+	lex_next(p);
 
-	push_inst(l, f, (inst) {OP_TAB, reg});
+	push_inst(p, f, (inst) {OP_TAB, reg});
 
-	while (!parse_expr(l, f)) {
+	while (!parse_expr(p, f)) {
 		int item = top_or_local(f);
 		free_if_temp(f, item);
 		
-		push_inst(l, f, (inst) {OP_PTAB, .rout = reg, .rina = item});
+		push_inst(p, f, (inst) {OP_PTAB, .rout = reg, .rina = item});
 
-		if (l->current.type != TOK_COM) {
-			if (l->current.type != TOK_TABR) {
+		if (p->current.type != TOK_COM) {
+			if (p->current.type != TOK_TABR) {
 				return -1;
 			}
 			break;
 		}
 
-		lex_next(l);
+		lex_next(p);
 	}
 
-	if (l->current.type !=  TOK_TABR) {
-		log_error(l, f, "Expected right bracket to close table expression");
+	if (p->current.type !=  TOK_TABR) {
+		log_error(p, f, "Expected right bracket to close table expression");
 		return -1;
 	}
-	lex_next(l);
+	lex_next(p);
 
 	return 0;
 }
 
-int parse_cont(lexer *l, f_data *f) {
-	switch (l->current.type) {
+int parse_cont(parser *p, f_data *f) {
+	switch (p->current.type) {
 	case TOK_INDL:{
 		int prefix = top_or_local(f);
-		lex_next(l);
+		lex_next(p);
 
-		parse_expr(l, f);
-		if (l->current.type != TOK_INDR) {
+		parse_expr(p, f);
+		if (p->current.type != TOK_INDR) {
 			return -1;
 		}
-		lex_next(l);
+		lex_next(p);
 		
 		int index = top_or_local(f);
 		free_if_temp(f, index);
 		free_if_temp(f, prefix);
 
 		int out = alloc_temp(f);
-		push_inst(l, f, (inst) {OP_GTAB, .rout = out, .rina = prefix, .rinb = index});
+		push_inst(p, f, (inst) {OP_GTAB, .rout = out, .rina = prefix, .rinb = index});
 
 		break;
 	}
 	case TOK_DOT:{
 		int prefix = top_or_local(f);
-		lex_next(l);
-		if (l->current.type != TOK_IDENT) {
+		lex_next(p);
+		if (p->current.type != TOK_IDENT) {
 			return -1;
 		}
 
-		char *ident = lex_claim_lexme(l);
-		lex_next(l);
+		char *ident = lex_claim_lexme(p);
+		lex_next(p);
 		
 		int index = alloc_temp(f);
-		push_inst(l, f, (inst) {OP_SETL, index, alloc_literal(f, (val) {VAL_STR,
+		push_inst(p, f, (inst) {OP_SETL, index, alloc_literal(f, (val) {VAL_STR,
 					.str = intern(&global_heap, &global_intern_map, (slice) {
 						.len = strlen(ident),
 						.str = ident })
@@ -1189,38 +1189,38 @@ int parse_cont(lexer *l, f_data *f) {
 		free_if_temp(f, prefix);
 		
 		int out = alloc_temp(f);
-		push_inst(l, f, (inst) {OP_GTAB, .rout = out, .rina = prefix, .rinb = index});
+		push_inst(p, f, (inst) {OP_GTAB, .rout = out, .rina = prefix, .rinb = index});
 
 		break;
 	}
 	case TOK_BRL:{
 		int prefix = top(f);
-		lex_next(l);
+		lex_next(p);
 
 		size_t no_args = 0;
-		if (l->current.type != TOK_BRR) {
+		if (p->current.type != TOK_BRR) {
 			do {
 				++no_args;
-				if (parse_expr(l, f)) {		
-					log_error(l, f, "Expected an expression in function call");
+				if (parse_expr(p, f)) {		
+					log_error(p, f, "Expected an expression in function call");
 					return 1;
 				}
 
-			} while (l->current.type == TOK_COM && lex_next(l));
+			} while (p->current.type == TOK_COM && lex_next(p));
 		}
 		
-		if (l->current.type != TOK_BRR) {
-			log_error(l, f, "Expected right bracket to close function call");
+		if (p->current.type != TOK_BRR) {
+			log_error(p, f, "Expected right bracket to close function call");
 			return -1;
 		}
-		lex_next(l);
+		lex_next(p);
 			
 		for (int i = 0;i < no_args;++i) {
 			free_temp(f);
 		}
 	
 		// No allocation needed for the return as prefix is not freed
-		push_inst(l, f, (inst) {OP_CALL, .rout = prefix, .rina = no_args, .rinb = 1});
+		push_inst(p, f, (inst) {OP_CALL, .rout = prefix, .rina = no_args, .rinb = 1});
 
 		break;
 	}default:
@@ -1229,36 +1229,36 @@ int parse_cont(lexer *l, f_data *f) {
 	return 0;
 }
 
-int parse_fun(lexer *l, f_data *f) {
+int parse_fun(parser *p, f_data *f) {
 	int reg = alloc_temp(f);
 
-	if (l->current.type != TOK_BRL) {
+	if (p->current.type != TOK_BRL) {
 		return 1;
 	}
-	lex_next(l);
+	lex_next(p);
 
 	f_data fd = {0};
 	add_scope(&fd);
 
 	size_t no_args = 0;
-	while (l->current.type == TOK_IDENT) {
+	while (p->current.type == TOK_IDENT) {
 		++no_args;
-		alloc_local(&fd, lex_claim_lexme(l));
-		lex_next(l);
+		alloc_local(&fd, lex_claim_lexme(p));
+		lex_next(p);
 
-		if (l->current.type == TOK_COM) {
-			lex_next(l);
+		if (p->current.type == TOK_COM) {
+			lex_next(p);
 		} else {
 			break;
 		}
 	}
 
-	if (l->current.type != TOK_BRR) {
+	if (p->current.type != TOK_BRR) {
 		return -1;
 	}
-	lex_next(l);
+	lex_next(p);
 
-	int err = parse_code(l, &fd);
+	int err = parse_code(p, &fd);
 	if (err) {
 		return err;
 	}
@@ -1266,10 +1266,10 @@ int parse_fun(lexer *l, f_data *f) {
 
 	free(fd.scopes.items);
 
-	if (l->current.type != TOK_END) {
+	if (p->current.type != TOK_END) {
 		return -1;
 	}
-	lex_next(l);
+	lex_next(p);
 
 	func_def *fun_def = gc_alloc(&global_heap, sizeof(*fun_def), GC_FUNCDEF);
 	fun_def->ins = fd.ins;
@@ -1279,41 +1279,41 @@ int parse_fun(lexer *l, f_data *f) {
 	fun_def->gc_height = fd.gc_height;
 	fun_def->literals = fd.literals;
 
-	fun_def->file = l->file;
+	fun_def->file = p->file;
 
 	func *fun = gc_alloc(&global_heap, sizeof(*fun), GC_FUNC);
 	fun->type = FUNC_NUA;
 	fun->def = fun_def;
 
-	push_inst(l, f, (inst) { OP_SETL, reg
+	push_inst(p, f, (inst) { OP_SETL, reg
 		, alloc_literal(f, (val) { VAL_FUNC, .func = fun })});
 
 	return 0;
 }
 
-int parse_pexpr(lexer *l, f_data *f) {
-	switch (l->current.type) {
+int parse_pexpr(parser *p, f_data *f) {
+	switch (p->current.type) {
 	case TOK_NIL:
-		push_inst(l, f, (inst) {OP_NIL, alloc_temp(f), 0});
-		lex_next(l);
+		push_inst(p, f, (inst) {OP_NIL, alloc_temp(f), 0});
+		lex_next(p);
 		break;
 	case TOK_NUM:
-		push_inst(l, f, (inst) {OP_SETL, alloc_temp(f)
-			, alloc_literal(f, (val) {VAL_NUM, l->current.num})});
-		lex_next(l);
+		push_inst(p, f, (inst) {OP_SETL, alloc_temp(f)
+			, alloc_literal(f, (val) {VAL_NUM, p->current.num})});
+		lex_next(p);
 		break;
 	case TOK_TABL:
-		if (parse_tab(l, f)) {
-			log_error(l, f, "Error unable parse tab\n");
+		if (parse_tab(p, f)) {
+			log_error(p, f, "Error unable parse tab\n");
 			return 1;
 		}
 		break;
 	case TOK_IDENT:{
-		size_t *local = find_local(f, l->current.lexme);
+		size_t *local = find_local(f, p->current.lexme);
 		if (local) {
-			push_inst(l, f, (inst) {OP_MOV, .rout = alloc_temp(f), .rina = *local});
+			push_inst(p, f, (inst) {OP_MOV, .rout = alloc_temp(f), .rina = *local});
 		} else {
-			char *ident = lex_claim_lexme(l);
+			char *ident = lex_claim_lexme(p);
 			int lit = alloc_literal(f, (val) {VAL_STR,
 				.str = intern(&global_heap, &global_intern_map, (slice) {
 					.len = strlen(ident),
@@ -1321,21 +1321,21 @@ int parse_pexpr(lexer *l, f_data *f) {
 				})
 			});
 			free(ident);
-			push_inst(l, f, (inst) {OP_GENV, .reg = alloc_temp(f), .lit = lit});
+			push_inst(p, f, (inst) {OP_GENV, .reg = alloc_temp(f), .lit = lit});
 		}
-		lex_next(l);
+		lex_next(p);
 		break;
 	} case TOK_FUN:{
-		lex_next(l);
-		if (parse_fun(l, f)) {
-			log_error(l, f, "Error; unable to parse fun\n");
+		lex_next(p);
+		if (parse_fun(p, f)) {
+			log_error(p, f, "Error; unable to parse fun\n");
 			return 1;
 		}
 		break;
 	} default:
 		return 1;
 	}
-	return parse_cont(l, f);
+	return parse_cont(p, f);
 }
 
 #endif
