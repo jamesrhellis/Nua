@@ -6,11 +6,6 @@ typedef struct mem_block {
 	char tag, colour;
 } mem_block;
 
-typedef struct mem_grey_link {
-	struct mem_block *next;
-	struct mem_grey_link *grey_next;
-} mem_grey_link;
-
 enum gc_mem_type { GC_FLAT, GC_TAB, GC_FUNC, GC_FUNCDEF };
 
 void *gc_alloc(mem_block **p, size_t size, int type) {
