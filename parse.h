@@ -62,7 +62,8 @@ typedef enum tokt {
 	// General Token types
 	TOK_ERR, TOK_IDENT, TOK_NUM, TOK_STR, TOK_EOI,
 	// Special identifiers
-	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_FUN, TOK_RET, TOK_NIL,
+	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_FUN, TOK_RET,
+	TOK_NIL, TOK_BREAK, TOK_CONTINUE,
 	// Special symbols
 	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_TABL, TOK_TABR,
 	TOK_INDL, TOK_INDR, TOK_BRL, TOK_BRR, TOK_COM, TOK_DOT
@@ -178,6 +179,8 @@ int parse_init(void) {
 	sident_map_set(&sidents, "function", TOK_FUN);
 	sident_map_set(&sidents, "return", TOK_RET);
 	sident_map_set(&sidents, "nil", TOK_NIL);
+	sident_map_set(&sidents, "break", TOK_BREAK);
+	sident_map_set(&sidents, "continue", TOK_CONTINUE);
 	return 0;
 }
 
@@ -317,6 +320,12 @@ RH_AL_MAKE(scope_al, ident_map)
 RH_HASH_MAKE(val_map, val, size_t, val_hash, val_eq, 0.9)
 
 typedef struct {
+	int in_loop; // Loop start may be 0, so a seperate var is needed
+	size_t start; // For continue
+	size_t last_break; // Linked jump list for break
+} loop_data;
+
+typedef struct {
 	//Variable register allocation
 	scope_al scopes;
 	size_t reg;
@@ -332,6 +341,9 @@ typedef struct {
 	//Literals
 	val_al literals;
 	val_map lit_map;
+	
+	// Loop tracking
+	loop_data loop;
 } f_data;
 
 #include "log.h"
@@ -454,6 +466,27 @@ int top_or_local(f_data *f) {
 	return top(f);
 }
 
+size_t linked_jump(lexer *l, f_data *f, size_t pos) {
+	size_t at = f->ins.top;
+	push_inst(l, f, (inst) { OP_JMP, .off = pos - at });
+	return at;
+}
+
+void set_jump_list(f_data *f, size_t pos, size_t to) {
+	if (!pos) {
+		return;
+	}
+	
+	int offset = 0;
+	do {	
+		pos -= offset;
+		assert(f->ins.items[pos].op == OP_JMP);
+		
+		offset = f->ins.items[pos].off;
+		f->ins.items[pos].off = to - pos;
+	} while (offset);
+}	
+
 int parse_code(lexer *l, f_data *f);
 int parse_local(lexer *l, f_data *f);
 int parse_assign(lexer *l, f_data *f);
@@ -463,6 +496,8 @@ int parse_pexpr(lexer *l, f_data *f);
 int parse_if(lexer *l, f_data *f);
 int parse_ret(lexer *l, f_data *f);
 int parse_while(lexer *l, f_data *f);
+int parse_break(lexer *l, f_data *f);
+int parse_continue(lexer *l, f_data *f);
 
 int parse(lexer l, func_def *f) {
 	lex_next(&l);
@@ -503,6 +538,12 @@ int parse_code(lexer *l, f_data *f) {
 		case TOK_WHILE:
 			err = parse_while(l, f);
 			break;
+		case TOK_BREAK:
+			err = parse_break(l, f);
+			break;
+		case TOK_CONTINUE:
+			err = parse_continue(l, f);
+			break;
 		case TOK_LOCAL:
 			err = parse_local(l, f);
 			break;
@@ -518,6 +559,35 @@ int parse_code(lexer *l, f_data *f) {
 	return 0;
 }
 
+int parse_break(lexer *l, f_data *f) {
+	if (l->current.type != TOK_BREAK) {
+		return 1;
+	}
+	lex_next(l);
+	
+	if (!f->loop.in_loop) {
+		return -1;
+	}
+	f->loop.last_break = linked_jump(l, f, f->loop.last_break);
+	
+	return 0;
+}
+
+int parse_continue(lexer *l, f_data *f) {
+	if (l->current.type != TOK_CONTINUE) {
+		return 1;
+	}
+	lex_next(l);
+	
+	if (!f->loop.in_loop) {
+		return -1;
+	}
+	size_t at = f->ins.top;
+	push_inst(l, f, (inst) { OP_JMP, .off = f->loop.start - at });
+
+	return 0;
+}
+
 int parse_while(lexer *l, f_data *f) {
 	if (l->current.type != TOK_WHILE) {
 		return 1;
@@ -526,6 +596,12 @@ int parse_while(lexer *l, f_data *f) {
 	lex_next(l);
 	
 	size_t start = f->ins.top;
+	loop_data old = f->loop;
+	f->loop = (loop_data) {
+		.in_loop = 1,
+		.start = start,
+	};
+	
 	if (parse_expr(l, f)) {
 		log_error(l, f, "Invalid while condition");
 		return -1;
@@ -546,7 +622,12 @@ int parse_while(lexer *l, f_data *f) {
 
 	parse_code(l, f);
 	push_inst(l, f, (inst) {OP_JMP, .off = start - f->ins.top });
+	
+	size_t end = f->ins.top;
 	f->ins.items[jmp_from].off = f->ins.top - jmp_from;
+	
+	set_jump_list(f, f->loop.last_break, end);
+	f->loop = old;
 
 	if (l->current.type != TOK_END) {
 		return -1;
