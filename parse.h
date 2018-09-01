@@ -65,7 +65,7 @@ typedef enum tokt {
 	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_FUN, TOK_RET,
 	TOK_NIL, TOK_BREAK, TOK_CONTINUE,
 	// Special symbols
-	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_TABL, TOK_TABR,
+	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_LE, TOK_LT, TOK_TABL, TOK_TABR,
 	TOK_INDL, TOK_INDR, TOK_BRL, TOK_BRR, TOK_COM, TOK_DOT
 } tokt;
 
@@ -124,6 +124,15 @@ static inline token parse_symb(parser *p) {
 		}
 		return (token) {
 			TOK_GT,
+		};
+	case '<':
+		if (*p->pos == '=') {
+			return (token) {
+				TOK_LE,
+			};
+		}
+		return (token) {
+			TOK_LT,
 		};
 	case '{':
 		return (token) {
@@ -1052,8 +1061,14 @@ int emit_bin_code(parser *p, f_data *f, tokt op, int left, int right) {
 	case TOK_SUB:
 		push_inst(p, f, (inst) {OP_SUB, .rout = out, .rina = left, .rinb =  right});
 		break;
+	case TOK_LT:
+		push_inst(p, f, (inst) {OP_GT, .rout = out, .rina = right, .rinb =  left});
+		break;
 	case TOK_GT:
 		push_inst(p, f, (inst) {OP_GT, .rout = out, .rina = left, .rinb =  right});
+		break;
+	case TOK_LE:
+		push_inst(p, f, (inst) {OP_GE, .rout = out, .rina = right, .rinb =  left});
 		break;
 	case TOK_GE:
 		push_inst(p, f, (inst) {OP_GE, .rout = out, .rina = left, .rinb =  right});
@@ -1068,11 +1083,11 @@ int emit_bin_code(parser *p, f_data *f, tokt op, int left, int right) {
 static inline int bin_prec(tokt op) {
 	switch (op) {
 	case TOK_ADD:
-		return 4;
 	case TOK_SUB:
 		return 4;
+	case TOK_LT:
+	case TOK_LE:
 	case TOK_GT:
-		return 1;
 	case TOK_GE:
 		return 1;
 	default:
