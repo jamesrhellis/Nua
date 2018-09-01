@@ -52,13 +52,15 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 
 	while (1) {
 		inst ins = f->def->ins.items[pc];
-		//printf("%d", pc);print_inst(ins);
+		// printf("%d", pc);print_inst(ins);
 		switch (ins.op) {
-		case OP_COVER:
+		case OP_COVER:	
+			pc++;
 			if (reg[ins.reg].type != VAL_NIL) {
-				pc++;
 				break;
-			} // else fall through	
+			} else {
+				ins = f->def->ins.items[pc];
+			} // fall through	
 		case OP_JMP:
 			pc += ins.off;
 			continue;	// Avoid addition at end of loop
@@ -132,6 +134,10 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 			&&  reg[ins.rinb].type == VAL_NUM) {
 				reg[ins.rout] = (val) {VAL_NUM, reg[ins.rina].num - reg[ins.rinb].num};
 				break;
+			} else {
+				print_val(reg[ins.rina]);
+				print_val(reg[ins.rinb]);
+				return -1;
 			}
 			break;
 		case OP_GT:

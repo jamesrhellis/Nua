@@ -473,7 +473,7 @@ size_t linked_jump(lexer *l, f_data *f, size_t pos) {
 }
 
 void set_jump_list(f_data *f, size_t pos, size_t to) {
-	if (!pos) {
+	if (!pos) { // FIXME a loop break could be at 0
 		return;
 	}
 	
