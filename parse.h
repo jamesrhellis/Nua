@@ -468,7 +468,8 @@ int top_or_local(f_data *f) {
 
 size_t linked_jump(lexer *l, f_data *f, size_t pos) {
 	size_t at = f->ins.top;
-	push_inst(l, f, (inst) { OP_JMP, .off = pos - at });
+	// FIXME a loop break may be at 0
+	push_inst(l, f, (inst) { OP_JMP, .off = pos?pos - at:0 });
 	return at;
 }
 
@@ -480,6 +481,7 @@ void set_jump_list(f_data *f, size_t pos, size_t to) {
 	int offset = 0;
 	do {	
 		pos -= offset;
+		print_inst(f->ins.items[pos]);
 		assert(f->ins.items[pos].op == OP_JMP);
 		
 		offset = f->ins.items[pos].off;

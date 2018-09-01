@@ -15,7 +15,10 @@ else
 	i = 52
 end
 
-while i > 23 do
+while 1 do
+	if 23 > i then
+		break
+	end
 	i = i - 1
 end
 
