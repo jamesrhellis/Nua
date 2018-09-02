@@ -60,16 +60,17 @@ void gc_func_def_mark(func_def *d, int black) {
 	if (d->link.colour == black) {
 		return;
 	}
+	d->link.colour = black;
 	
 	for (int i = 0;i < d->literals.top;++i) {
 		gc_val_mark(&d->literals.items[i], black);
 	}
-	d->link.colour = black;
 }
 void gc_tab_mark(tab *t, int black) {
 	if (!t || t->link.colour == black) {
 		return;
 	}
+	t->link.colour = black;
 	//puts("Marking tab");
 	
 	for (int i = 0;i < t->al.top;++i) {
@@ -83,7 +84,6 @@ void gc_tab_mark(tab *t, int black) {
 			}
 		}
 	}
-	t->link.colour = black;
 }
 void gc_val_mark(val *v, int black) {
 	switch (v->type) {
@@ -99,10 +99,11 @@ void gc_val_mark(val *v, int black) {
 		if (v->func->link.colour == black) {
 			return;
 		}
+		v->func->link.colour = black;
 		//puts("Marking func");
 		gc_tab_mark(v->func->env, black);
 		gc_func_def_mark(v->func->def, black);
-		v->func->link.colour = black;
+
 		break;
 	} case VAL_STR: {
 		//puts("Marking str");
