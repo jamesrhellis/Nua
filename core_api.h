@@ -7,6 +7,7 @@ typedef struct nua_state {
 	// Mem management
 	size_t white;		// Current val of white tag (0, 1)
 	mem_block *gc_list;	// All objects
+	str_map intern_map;
 } nua_state;
 
 void gc_mark(nua_state *n, int height) {

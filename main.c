@@ -36,13 +36,13 @@ int main(int argn, char **args) {
 	
 	nua_state *n = nua_init();
 
-	func *base = gc_alloc(&global_heap, sizeof(*base), GC_FUNC); {
-		tab *env = gc_alloc(&global_heap, sizeof(tab), GC_TAB);
+	func *base = gc_alloc(&n->gc_list, sizeof(*base), GC_FUNC); {
+		tab *env = gc_alloc(&n->gc_list, sizeof(tab), GC_TAB);
 		*env = (tab) {0};
-		*base = (func) {.type = FUNC_NUA, .def = gc_alloc(&global_heap, sizeof(*base->def), GC_FUNCDEF), .env = env};
+		*base = (func) {.type = FUNC_NUA, .def = gc_alloc(&n->gc_list, sizeof(*base->def), GC_FUNCDEF), .env = env};
 	}
 
-	if (parse((parser){args[1], file, .lstart = file}, base->def) || parse_errors.items) {
+	if (parse((parser){args[1], file, .lstart = file, .gc_heap = &n->gc_list, .intern_map = &n->intern_map}, base->def) || parse_errors.items) {
 		fprintf(stderr, "Unable to parse file!\n");
 		rh_al_for(struct error e, parse_errors, {
 			print_error(e);
@@ -54,11 +54,11 @@ int main(int argn, char **args) {
 	
 	print_func_def(*base->def);
 	
-	func *print =  gc_alloc(&global_heap, sizeof(*print), GC_FUNC);
+	func *print =  gc_alloc(&n->gc_list, sizeof(*print), GC_FUNC);
 	print->type = FUNC_C;
 	print->c_func = &nua_print_val;
 	
-	tab_set(base->env, (val){VAL_STR, .str = intern(&global_heap, &global_intern_map, (slice) {
+	tab_set(base->env, (val){VAL_STR, .str = intern(&n->gc_list, &n->intern_map, (slice) {
 		.len = 5,
 		.str = "print"})}, 
 		(val){VAL_FUNC, .func = print});

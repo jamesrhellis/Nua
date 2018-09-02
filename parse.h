@@ -92,6 +92,10 @@ typedef struct {
 	const char *lstart;
 
 	token current;
+	
+	// GC information
+	mem_block **gc_heap;
+	str_map *intern_map;
 } parser;
 
 char unexpected_char[] = "Unexpected char!";
@@ -1193,7 +1197,7 @@ int parse_cont(parser *p, f_data *f) {
 		
 		int index = alloc_temp(f);
 		push_inst(p, f, (inst) {OP_SETL, index, alloc_literal(f, (val) {VAL_STR,
-					.str = intern(&global_heap, &global_intern_map, (slice) {
+					.str = intern(p->gc_heap, p->intern_map, (slice) {
 						.len = strlen(ident),
 						.str = ident })
 					})
@@ -1286,7 +1290,7 @@ int parse_fun(parser *p, f_data *f) {
 	}
 	lex_next(p);
 
-	func_def *fun_def = gc_alloc(&global_heap, sizeof(*fun_def), GC_FUNCDEF);
+	func_def *fun_def = gc_alloc(p->gc_heap, sizeof(*fun_def), GC_FUNCDEF);
 	fun_def->ins = fd.ins;
 	fun_def->max_reg = fd.max_reg;
 	fun_def->no_args = no_args;
@@ -1296,7 +1300,7 @@ int parse_fun(parser *p, f_data *f) {
 
 	fun_def->file = p->file;
 
-	func *fun = gc_alloc(&global_heap, sizeof(*fun), GC_FUNC);
+	func *fun = gc_alloc(p->gc_heap, sizeof(*fun), GC_FUNC);
 	fun->type = FUNC_NUA;
 	fun->def = fun_def;
 
@@ -1330,7 +1334,7 @@ int parse_pexpr(parser *p, f_data *f) {
 		} else {
 			char *ident = lex_claim_lexme(p);
 			int lit = alloc_literal(f, (val) {VAL_STR,
-				.str = intern(&global_heap, &global_intern_map, (slice) {
+				.str = intern(p->gc_heap, p->intern_map, (slice) {
 					.len = strlen(ident),
 					.str = ident,
 				})
