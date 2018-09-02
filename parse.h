@@ -94,7 +94,7 @@ typedef struct {
 	token current;
 	
 	// GC information
-	mem_block **gc_heap;
+	mem_block *gc_heap;
 	str_map *intern_map;
 } parser;
 

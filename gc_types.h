@@ -6,16 +6,16 @@ typedef struct mem_block {
 	char tag, colour;
 } mem_block;
 
-enum gc_mem_type { GC_FLAT, GC_TAB, GC_FUNC, GC_FUNCDEF };
+enum gc_mem_type { GC_FLAT, GC_TAB, GC_FUNC, GC_FUNCDEF, GC_USERDATA };
 
-void *gc_alloc(mem_block **p, size_t size, int type) {
+void *gc_alloc(mem_block *p, size_t size, int type) {
 	mem_block *mem = calloc(size, 1);
-	mem->next = *p;
+	mem->next = p->next;
 	mem->tag = type;
 	// FIXME use real white
-	mem->colour = 0;
+	mem->colour = p->colour;
 	
-	*p = mem;
+	p->next = mem;
 
 	return (void *) mem;
 }

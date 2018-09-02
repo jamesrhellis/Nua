@@ -6,13 +6,13 @@ typedef struct nua_state {
 	
 	// Mem management
 	size_t white;		// Current val of white tag (0, 1)
-	mem_block *gc_list;	// All objects
+	mem_block gc_list;	// All objects
 	str_map intern_map;
 } nua_state;
 
 void gc_mark(nua_state *n, int height) {
-	n->white = !n->white;
-	int white = n->white;
+	n->gc_list.colour = !n->gc_list.colour;
+	int white = n->gc_list.colour;
 	
 	for (int i = 0;i < height+1;++i) {
 		gc_val_mark(&n->stack.items[i], !white);
@@ -71,12 +71,12 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 		case OP_SETL:
 			switch (lit[ins.lit].type) {
 			case VAL_TAB:
-				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(&global_heap, sizeof(tab), GC_TAB)};
+				reg[ins.reg] = (val) {VAL_TAB, .tab = gc_alloc(&n->gc_list, sizeof(tab), GC_TAB)};
 				reg[ins.reg].tab->al = val_al_clone(&lit[ins.lit].tab->al);
 				reg[ins.reg].tab->ht = val_ht_clone(&lit[ins.lit].tab->ht);
 				break;
 			case VAL_FUNC:
-				reg[ins.reg] = (val) {VAL_FUNC, .func = gc_alloc(&global_heap, sizeof(func), GC_FUNC)};
+				reg[ins.reg] = (val) {VAL_FUNC, .func = gc_alloc(&n->gc_list, sizeof(func), GC_FUNC)};
 				reg[ins.reg].func->type = FUNC_NUA;
 				reg[ins.reg].func->def = lit[ins.lit].func->def;
 				reg[ins.reg].func->env = f->env;
@@ -166,7 +166,7 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 			reg[ins.rout] = reg[ins.rina];
 			break;
 		case OP_TAB:
-			reg[ins.rout] = (val) {VAL_TAB, .tab = gc_alloc(&global_heap, sizeof(tab), GC_TAB)};
+			reg[ins.rout] = (val) {VAL_TAB, .tab = gc_alloc(&n->gc_list, sizeof(tab), GC_TAB)};
 			val_ht_resize(&reg[ins.rout].tab->ht, ins.rina);
 			val_al_resize(&reg[ins.rout].tab->al, RH_HASH_SIZE(ins.rinb));
 			break;
@@ -207,8 +207,8 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 		default:
 			break;
 		}
-		//gc_mark(n, base + f->def->gc_height.items[pc]);
-		//gc_sweep(&global_heap, n->white);
+		gc_mark(n, base + f->def->gc_height.items[pc]);
+		gc_sweep(&n->gc_list);
 		
 		pc++;
 	}

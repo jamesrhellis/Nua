@@ -53,7 +53,7 @@ slice slice_from_intern(interned_str *i) {
 	};
 }
 
-interned_str *intern_from_slice(mem_block **gc, slice c) {
+interned_str *intern_from_slice(mem_block *gc, slice c) {
 	interned_str *s = gc_alloc(gc, sizeof(interned_str) + c.len + 1, GC_FLAT);
 	s->len = c.len;
 	s->link.next = NULL;
@@ -63,7 +63,7 @@ interned_str *intern_from_slice(mem_block **gc, slice c) {
 	return s;
 }
 
-interned_str *intern(mem_block **gc, str_map *m, slice s) {
+interned_str *intern(mem_block *gc, str_map *m, slice s) {
 	str_map_bucket *b = str_map_find(m, s);
 	if (!b) {
 		interned_str *i = intern_from_slice(gc, s);
@@ -74,7 +74,5 @@ interned_str *intern(mem_block **gc, str_map *m, slice s) {
 		return b->value;
 	}
 }
-
-str_map global_intern_map = {0};
 	
 #endif

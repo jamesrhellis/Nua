@@ -4,18 +4,19 @@
 #include "val.h"
 #include "gc_types.h"
 
-void gc_sweep(mem_block **p, uint8_t white_tag) {
-	if (!*p) {
+void gc_sweep(mem_block *p) {
+	if (!p) {
 		return;
 	}
 	
 	// TODO clear intern table before the gc
-	mem_block **prev = p;
-	mem_block *current = *p;
+	mem_block **prev = &p->next;
+	mem_block *current = p->next;
+	int white = p->colour;
 
 	while (current) {
 		//puts("Here");
-		if (white_tag ==  current->colour) {
+		if (white ==  current->colour) {
 			mem_block *tofree = current;
 			*prev = current->next;
 			current = *prev;
@@ -111,7 +112,5 @@ void gc_val_mark(val *v, int black) {
 		break;
 	}
 }
-
-mem_block *global_heap;
 
 #endif
