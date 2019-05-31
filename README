@@ -1,0 +1,17 @@
+Nua - Not lUA
+
+A simple implimentation of a Lua-like programming language.
+Currently needs some work to be usable as a stable programming language:
+- Automated method of triggering the GC
+- Stable C api
+- Embedding support
+- Standard library
+
+Differences to Lua:
+- 0 indexing
+- no co-routines
+- no weak references
+- functions do not have up-values or global tables, but meta-tables instead,
+	this would allow for manipulation within the language,
+	but is less efficient
+- no meta-table functions (yet)
