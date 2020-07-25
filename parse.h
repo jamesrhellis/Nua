@@ -101,10 +101,31 @@ typedef struct {
 char unexpected_char[] = "Unexpected char!";
 char unexpected_newl[] = "Unexpected newline in string literal!";
 
+token __lex_next(parser *p);
+
+static inline token parse_comment(parser *p) {
+	int nested_comments = 1;
+	while (*p->pos) {
+		if (*p->pos == '(' && *++p->pos == '*') {
+			++nested_comments;
+		} else if (*p->pos == '*' && *++p->pos == ')') {
+			if (!--nested_comments) {
+				++p->pos;
+				break;
+			}
+		}
+
+		++p->pos;
+	}
+
+	return __lex_next(p);
+}
+
 static inline token parse_symb(parser *p) {
 	switch (*p->pos++) {
 	case '=':
 		if (*p->pos == '=') {
+			++p->pos;
 			return (token) {
 				TOK_EQ,
 			};
@@ -155,6 +176,10 @@ static inline token parse_symb(parser *p) {
 			TOK_INDR,
 		};
 	case '(':
+		if (*p->pos == '*') {
+			++p->pos;
+			return parse_comment(p);
+		}
 		return (token) {
 			TOK_BRL,
 		};

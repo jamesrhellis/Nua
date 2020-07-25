@@ -1,3 +1,7 @@
+
+(* This uses the recursive method as a crude performance test,
+   rather than the faster iterative method *)
+
 fib = function(n)
     if n < 2 then
     	return 1
