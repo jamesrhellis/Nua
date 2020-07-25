@@ -42,6 +42,7 @@ void gc_sweep(mem_block *p) {
 				inst_lines_free(&d->lines);
 				break;
 			} default:
+				// FIXME we are leaking strings currently
 				break;
 			}
 				

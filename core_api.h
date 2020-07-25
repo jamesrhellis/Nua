@@ -3,7 +3,7 @@
 
 typedef struct nua_state {
 	val_al stack;
-	
+
 	// Mem management
 	size_t white;		// Current val of white tag (0, 1)
 	mem_block gc_list;	// All objects
@@ -13,7 +13,7 @@ typedef struct nua_state {
 void gc_mark(nua_state *n, int height) {
 	n->gc_list.colour = !n->gc_list.colour;
 	int white = n->gc_list.colour;
-	
+
 	for (int i = 0;i < height+1;++i) {
 		gc_val_mark(&n->stack.items[i], !white);
 	}
@@ -32,11 +32,11 @@ nua_state *nua_init() {
 
 int nua_call(nua_state *n, int base, int no_args, int no_returns) {	
 	int pc = 0;
-	
+
 	func *f = n->stack.items[base].func;
 	val *lit = f->def->literals.items;
 	tab *env = f->env;
-	
+
 	size_t max = base + f->def->max_reg;
 
 	if (max >= n->stack.size) {
@@ -209,7 +209,7 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 		}
 		gc_mark(n, base + f->def->gc_height.items[pc]);
 		gc_sweep(&n->gc_list);
-		
+
 		pc++;
 	}
 

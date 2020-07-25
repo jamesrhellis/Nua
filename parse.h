@@ -279,12 +279,6 @@ token __lex_next(parser *p) {
 			p->line++;
 			p->lstart = p->pos;
 			const char *line = p->pos + 1;
-			/*
-			while (*line && *line != '\n') {
-				putchar(*line++);
-			}
-			putchar('\n');
-			*/
 		}
 		p->pos++;
 	}
