@@ -359,8 +359,6 @@ typedef struct {
 	loop_data loop;
 } f_data;
 
-#include "log.h"
-
 int add_scope(f_data *f) {
 	return scope_al_push(&f->scopes, (ident_map) {0});
 }
@@ -513,6 +511,10 @@ int parse_ret(parser *p, f_data *f);
 int parse_while(parser *p, f_data *f);
 int parse_break(parser *p, f_data *f);
 int parse_continue(parser *p, f_data *f);
+
+int log_error(parser *p, f_data *f, char *error_message) {
+	return fprintf(stderr, "%s", error_message);
+}
 
 int parse(parser p, func_def *f) {
 	lex_next(&p);
