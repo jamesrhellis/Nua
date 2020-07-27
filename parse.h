@@ -62,7 +62,7 @@ typedef enum tokt {
 	// General Token types
 	TOK_ERR, TOK_IDENT, TOK_NUM, TOK_STR, TOK_EOI,
 	// Special identifiers
-	TOK_LOCAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_FUN, TOK_RET,
+	TOK_LOCAL, TOK_GLOBAL, TOK_IF, TOK_THEN, TOK_ELSE, TOK_END, TOK_WHILE, TOK_DO, TOK_FUN, TOK_RET,
 	TOK_NIL, TOK_BREAK, TOK_CONTINUE,
 	// Special symbols
 	TOK_ASSIGN, TOK_EQ, TOK_ADD, TOK_SUB, TOK_GE, TOK_GT, TOK_LE, TOK_LT, TOK_TABL, TOK_TABR,
@@ -208,6 +208,7 @@ sident_map sidents = {0};
 
 int parse_init(void) {
 	sident_map_set(&sidents, "local", TOK_LOCAL);
+	sident_map_set(&sidents, "global", TOK_GLOBAL);
 	sident_map_set(&sidents, "if", TOK_IF);
 	sident_map_set(&sidents, "then", TOK_THEN);
 	sident_map_set(&sidents, "else", TOK_ELSE);

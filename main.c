@@ -21,34 +21,49 @@ int nua_print_val(int no_args, val *stack) {
 	return 0;
 }
 
+func *nua_load_file(nua_state *n, tab *env, char *file_name) {
+
+	const char *file = load_file(file_name);
+	if (!file) {
+		fprintf(stderr, "Unable to load file!");
+		return NULL;
+	}
+
+	func *file_func = nua_new_func(n, env);
+
+	parser p = {
+		file_name, file,
+		.lstart = file,
+		.gc_heap = &n->gc_list,
+		.intern_map = &n->intern_map
+	};
+
+	if (parse(p, file_func->def)) {
+		fprintf(stderr, "Unable to parse file!\n");
+
+		free((void *) file);
+		return NULL;
+	}
+
+	free((void *) file);
+	return file_func;
+}
+
 int main(int argn, char **args) {
 	if (argn < 2) {
 		return 0;
 	}
 
-	const char *file = load_file(args[1]);
-	if (!file) {
-		fprintf(stderr, "Unable to load file!");
+	nua_init();
+	
+	nua_state *n = nua_new_state();
+	tab *env = nua_new_tab(n);
+
+	func *base = nua_load_file(n, env, args[1]);
+	if (!base) {
 		return 1;
 	}
 
-	parse_init();
-	
-	nua_state *n = nua_init();
-
-	func *base = gc_alloc(&n->gc_list, sizeof(*base), GC_FUNC); {
-		tab *env = gc_alloc(&n->gc_list, sizeof(tab), GC_TAB);
-		*env = (tab) {0};
-		*base = (func) {.type = FUNC_NUA, .def = gc_alloc(&n->gc_list, sizeof(*base->def), GC_FUNCDEF), .env = env};
-	}
-
-	if (parse((parser){args[1], file, .lstart = file, .gc_heap = &n->gc_list, .intern_map = &n->intern_map}, base->def)) {
-		fprintf(stderr, "Unable to parse file!\n");
-
-		return 1;
-	}
-	free((void *) file);
-	
 	print_func_def(*base->def);
 	
 	func *print =  gc_alloc(&n->gc_list, sizeof(*print), GC_FUNC);

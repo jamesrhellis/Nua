@@ -24,12 +24,6 @@ int nua_pcall(nua_state *n, int arg_base, int no_args, int no_returns);
 
 int nua_c_func(nua_state *n, int arg_base, int no_args, int no_returns);
 
-nua_state *nua_init() {
-	nua_state *n = malloc(sizeof(*n));
-	*n = (nua_state) {.stack = val_al_new(256)};
-	return n;
-}
-
 int nua_call(nua_state *n, int base, int no_args, int no_returns) {	
 	int pc = 0;
 
@@ -215,4 +209,32 @@ int nua_call(nua_state *n, int base, int no_args, int no_returns) {
 
 	return 0;
 }
+
+int nua_init() {
+	return parse_init();
+}
+
+nua_state *nua_new_state() {
+	nua_state *n = malloc(sizeof(*n));
+	*n = (nua_state) {.stack = val_al_new(256)};
+	return n;
+}
+
+tab *nua_new_tab(nua_state *n) {
+	tab *new = gc_alloc(&n->gc_list, sizeof(tab), GC_TAB);
+	*new = (tab) {0};
+	return new;
+}
+
+func *nua_new_func(nua_state *n, tab *env) {
+	func *new = gc_alloc(&n->gc_list, sizeof(*new), GC_FUNC);
+	*new = (func) {
+		.type = FUNC_NUA,
+		.def = gc_alloc(&n->gc_list, sizeof(*new->def), GC_FUNCDEF),
+		.env = env,
+	};
+
+	return new;
+}
+
 #endif
