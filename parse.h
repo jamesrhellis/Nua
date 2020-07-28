@@ -347,7 +347,14 @@ char *lex_claim_lexme(parser *p) {
 	return lex;
 }
 
-RH_HASH_MAKE(ident_map, char *, size_t, rh_string_hash, rh_string_eq, 0.9)
+enum symbolt { ST_NONE, ST_LOCAL, ST_UPVAL, ST_ENV };
+
+typedef struct symbol {
+	uint8_t type;
+	uint8_t reg;
+} symbol;
+
+RH_HASH_MAKE(ident_map, char *, symbol, rh_string_hash, rh_string_eq, 0.9)
 RH_AL_MAKE(scope_al, ident_map)
 
 RH_HASH_MAKE(val_map, val, size_t, val_hash, val_eq, 0.9)
@@ -361,6 +368,7 @@ typedef struct {
 typedef struct {
 	//Variable register allocation
 	scope_al scopes;
+
 	size_t reg;
 	size_t temp;
 
@@ -400,24 +408,15 @@ int rem_scope(f_data *f) {
 	return 0;
 }
 
-size_t *find_local(f_data *f, char *ident) {
+symbol find_symbol(f_data *f, char *ident) {
 	ident_map_bucket *local = NULL;
 	for (int i = f->scopes.top-1;i >= 0;--i) {
 		if ((local = ident_map_find(&f->scopes.items[i], ident))) {
-			return &local->value;
+			return local->value;
 		}
 	}
 
-	return NULL;
-}
-
-size_t *find_local_top(f_data *f, char *ident) {
-	ident_map_bucket *local = ident_map_find(&f->scopes.items[f->scopes.top-1], ident);
-	if (local) {
-		return &local->value;
-	}
-
-	return NULL;
+	return (symbol) { ST_NONE };
 }
 
 size_t alloc_literal(f_data *f, val value) {
@@ -439,8 +438,12 @@ size_t alloc_local(f_data *f, char *name) {
 		f->max_reg = reg;
 	}
 
-	ident_map_set(&f->scopes.items[f->scopes.top-1], name, reg);
+	ident_map_set(&f->scopes.items[f->scopes.top-1], name, (symbol) { ST_LOCAL, reg });
 	return reg;
+}
+
+void add_global(f_data *f, char *name) {
+	ident_map_set(&f->scopes.items[f->scopes.top-1], name, (symbol) { ST_ENV });
 }
 
 size_t alloc_temp(f_data *f) {
@@ -521,7 +524,7 @@ void set_jump_list(f_data *f, size_t pos, size_t to) {
 }	
 
 int parse_code(parser *p, f_data *f);
-int parse_local(parser *p, f_data *f);
+int parse_decl(parser *p, f_data *f);
 int parse_assign(parser *p, f_data *f);
 int parse_expr(parser *p, f_data *f);
 int parse_bin_expr(parser *p, f_data *f, int precedence);
@@ -532,9 +535,7 @@ int parse_while(parser *p, f_data *f);
 int parse_break(parser *p, f_data *f);
 int parse_continue(parser *p, f_data *f);
 
-int log_error(parser *p, f_data *f, char *error_message) {
-	return fprintf(stderr, "%s", error_message);
-}
+#define log_error(PARSER, FDATA, ...) fprintf(stderr, __VA_ARGS__)
 
 int parse(parser p, func_def *f) {
 	lex_next(&p);
@@ -550,7 +551,7 @@ int parse(parser p, func_def *f) {
 	free(fd.scopes.items);
 	
 	if (p.current.type != TOK_EOI) {
-		log_error(&p, &fd, "Did not completely parse input");
+		log_error(&p, &fd, "Did not completely parse input\n");
 		return -1;
 	}
 
@@ -582,7 +583,8 @@ int parse_code(parser *p, f_data *f) {
 			err = parse_continue(p, f);
 			break;
 		case TOK_LOCAL:
-			err = parse_local(p, f);
+		case TOK_GLOBAL:
+			err = parse_decl(p, f);
 			break;
 		case TOK_RET:
 			err = parse_ret(p, f);
@@ -640,13 +642,13 @@ int parse_while(parser *p, f_data *f) {
 	};
 	
 	if (parse_expr(p, f)) {
-		log_error(p, f, "Invalid while condition");
+		log_error(p, f, "Invalid while condition\n");
 		return -1;
 	}
 	int condition = top_or_local(f);
 	
 	if (p->current.type != TOK_DO) {
-		log_error(p, f, "Expected do token to close while condition");
+		log_error(p, f, "Expected do token to close while condition\n");
 		return -1;
 	}
 	lex_next(p);
@@ -760,15 +762,17 @@ int parse_ret(parser *p, f_data *f) {
 RH_AL_MAKE(reg_al, uint8_t)
 RH_AL_MAKE(ident_al, char *)
 
-int parse_local(parser *p, f_data *f) {
-	if (p->current.type != TOK_LOCAL) {
+int parse_decl(parser *p, f_data *f) {
+	if (p->current.type != TOK_LOCAL && p->current.type != TOK_GLOBAL) {
 		return 1;
 	}
+	int is_global = p->current.type == TOK_GLOBAL;
+
 	lex_next(p);
 
 	ident_al id = {0};
 	if (p->current.type != TOK_IDENT) {
-		log_error(p, f, "No identifier after local\n");
+		log_error(p, f, "No identifier after declaration\n");
 		return -1;
 	}
 	ident_al_push(&id, lex_claim_lexme(p));
@@ -786,8 +790,18 @@ int parse_local(parser *p, f_data *f) {
 	}
 
 	if (p->current.type != TOK_ASSIGN) {
-		log_error(p, f, "Error no assignment\n");
-		return -1;
+		for (size_t t = 0; t < id.top; ++t) {
+			if (is_global) {
+				// Missing globals will be found as NIL, so no initialisation needed
+				add_global(f, id.items[t]);
+			} else {
+				// Need to initialise the local to NIL to avoid safety issues
+				size_t reg = alloc_local(f, id.items[t]);
+				push_inst(p, f, (inst) {OP_NIL, reg, 0});
+			}
+
+		}
+		return 0;
 	}
 	lex_next(p);
 	
@@ -796,38 +810,80 @@ int parse_local(parser *p, f_data *f) {
 	size_t t = 0;
 
 	if (parse_expr(p, f)) {
-		log_error(p, f, "No expression after local\n");
+		log_error(p, f, "No expression after declaration\n");
 		return -1;
 	}
-	trans_temp(f, id.items[t++]);
+
+	if (is_global) {
+		char *ident = id.items[t++];
+		size_t reg = top_or_local(f);
+		add_global(f, ident);
+		push_inst(p, f, (inst) {OP_SENV, reg, alloc_literal(f, (val) {VAL_STR,
+						.str = intern(p->gc_heap, p->intern_map, (slice) {
+							.len = strlen(ident),
+							.str = ident })
+						})
+		});
+
+		free_if_temp(f, reg);
+	} else {
+		trans_temp(f, id.items[t++]);
+	}
 
 	while (p->current.type == TOK_COM) {
 		lex_next(p);
 
 		if (t >= id.top) {
-			log_error(p, f, "Excess of expressions after local\n");
+			log_error(p, f, "Excess of expressions after declaration\n");
 			return -1;
 		}
 		if (parse_expr(p, f)) {
-			log_error(p, f, "Unable to parse expression after local\n");
+			log_error(p, f, "Unable to parse expression after declaration\n");
 			return -1;
 		}
 
-		trans_temp(f, id.items[t++]);
+		if (is_global) {
+			char *ident = id.items[t++];
+			size_t reg = top_or_local(f);
+			add_global(f, ident);
+			push_inst(p, f, (inst) {OP_SENV, reg, alloc_literal(f, (val) {VAL_STR,
+							.str = intern(p->gc_heap, p->intern_map, (slice) {
+								.len = strlen(ident),
+								.str = ident })
+							})
+			});
+
+			free_if_temp(f, reg);
+		} else {
+			trans_temp(f, id.items[t++]);
+		}
+
 	}
 
 	if (t < id.top) {
 		inst *i = inst_list_rpeek(&f->ins);
 		if (i->op != OP_CALL) {
-			log_error(p, f, "Lack of expressions after local\n");
+			log_error(p, f, "Lack of expressions after declaration\n");
 			return -1;
 		}
 		i->rinb += id.top - t;
 		// FIXME need to set the gc height after changing return no
 
 		while (t < id.top) {
-			alloc_local(f, id.items[t++]);
-			//assert(reg == ++f_reg);
+			if (is_global) {
+				char *ident = id.items[t++];
+				add_global(f, ident);
+				push_inst(p, f, (inst) {OP_SENV, f->reg + (i->rinb - (id.top - t)), alloc_literal(f, (val) {VAL_STR,
+								.str = intern(p->gc_heap, p->intern_map, (slice) {
+									.len = strlen(ident),
+									.str = ident })
+								})
+				});
+			} else {
+				alloc_local(f, id.items[t++]);
+				//assert(reg == ++f_reg);
+			}
+
 		}
 	}
 
@@ -1178,7 +1234,7 @@ int parse_tab(parser *p, f_data *f) {
 	}
 
 	if (p->current.type !=  TOK_TABR) {
-		log_error(p, f, "Expected right bracket to close table expression");
+		log_error(p, f, "Expected right bracket to close table expression\n");
 		return -1;
 	}
 	lex_next(p);
@@ -1243,7 +1299,7 @@ int parse_cont(parser *p, f_data *f) {
 			do {
 				++no_args;
 				if (parse_expr(p, f)) {		
-					log_error(p, f, "Expected an expression in function call");
+					log_error(p, f, "Expected an expression in function call\n");
 					return 1;
 				}
 
@@ -1251,7 +1307,7 @@ int parse_cont(parser *p, f_data *f) {
 		}
 		
 		if (p->current.type != TOK_BRR) {
-			log_error(p, f, "Expected right bracket to close function call");
+			log_error(p, f, "Expected right bracket to close function call\n");
 			return -1;
 		}
 		lex_next(p);
@@ -1350,20 +1406,29 @@ int parse_pexpr(parser *p, f_data *f) {
 		}
 		break;
 	case TOK_IDENT:{
-		size_t *local = find_local(f, p->current.lexme);
-		if (local) {
-			push_inst(p, f, (inst) {OP_MOV, .rout = alloc_temp(f), .rina = *local});
-		} else {
-			char *ident = lex_claim_lexme(p);
-			int lit = alloc_literal(f, (val) {VAL_STR,
-				.str = intern(p->gc_heap, p->intern_map, (slice) {
-					.len = strlen(ident),
-					.str = ident,
-				})
-			});
-			free(ident);
-			push_inst(p, f, (inst) {OP_GENV, .reg = alloc_temp(f), .lit = lit});
+		symbol sym = find_symbol(f, p->current.lexme);
+		switch (sym.type) {
+		case ST_LOCAL:
+			push_inst(p, f, (inst) {OP_MOV, .rout = alloc_temp(f), .rina = sym.reg});
+			break;
+		case ST_ENV:
+			{
+				char *ident = lex_claim_lexme(p);
+				int lit = alloc_literal(f, (val) {VAL_STR,
+					.str = intern(p->gc_heap, p->intern_map, (slice) {
+						.len = strlen(ident),
+						.str = ident,
+					})
+				});
+				free(ident);
+				push_inst(p, f, (inst) {OP_GENV, .reg = alloc_temp(f), .lit = lit});
+				break;
+			}
+		default:
+			log_error(p, f, "Error; unable to find variable: '%s'\n", p->current.lexme);
+			return 1;
 		}
+
 		lex_next(p);
 		break;
 	} case TOK_FUN:{

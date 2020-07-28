@@ -2,7 +2,10 @@
 (* This uses the recursive method as a crude performance test,
    rather than the faster iterative method *)
 
-fib = function(n)
+global print
+
+global fib = function(n)
+    global fib
     if n < 2 then
     	return 1
     end

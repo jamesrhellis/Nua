@@ -1,3 +1,5 @@
+global print
+
 local i = 23
 i = 21
 

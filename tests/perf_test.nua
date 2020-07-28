@@ -1,5 +1,7 @@
 local a = 1
 
+global print
+
 while 10000000 > a do
 	a = a + 1
 end
